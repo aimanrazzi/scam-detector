@@ -35,7 +35,7 @@ Scoring guide:
 - 31 to 69 = SUSPICIOUS (some red flags, be careful)
 - 70 to 100 = SCAM (clear scam indicators detected)"""
 
-    response = gemini_client.models.generate_content(model="gemini-1.5-flash", contents=prompt)
+    response = gemini_client.models.generate_content(model="models/gemini-2.5-flash", contents=prompt)
 
     import json
     raw = response.text.strip()
@@ -148,4 +148,4 @@ def health():
 
 # ── Run Server ───────────────────────────────────────────
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True, host="0.0.0.0", port=5000)

@@ -11,9 +11,7 @@ import {
   StatusBar,
 } from "react-native";
 
-const BACKEND_URL = "http://10.0.2.2:5000"; // Android emulator → localhost
-// const BACKEND_URL = "http://localhost:5000"; // iOS simulator
-// const BACKEND_URL = "http://YOUR_PC_IP:5000"; // Physical device (replace with your PC's IP)
+const BACKEND_URL = "http://192.168.0.14:5000"; // Your PC's local IP
 
 export default function App() {
   const [inputText, setInputText] = useState("");
