@@ -10,7 +10,6 @@ import {
   StatusBar,
   Image,
   Share,
-  Linking,
   Animated,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -408,30 +407,59 @@ export default function HomeScreen({ embedded = false }) {
                   )}
 
                   {result.semak_mule_found != null && (
-                    <View style={[
-                      styles.semakMuleResult,
-                      { backgroundColor: result.semak_mule_found ? theme.danger + "22" : theme.safe + "22",
-                        borderColor: result.semak_mule_found ? theme.danger : theme.safe }
-                    ]}>
-                      <Text style={{ fontSize: 16 }}>
-                        {result.semak_mule_found ? "🚨" : "✅"}
-                      </Text>
-                      <Text style={[styles.semakMuleResultText, {
-                        color: result.semak_mule_found ? theme.danger : theme.safe
-                      }]}>
+                    <View style={[styles.semakMuleResult, {
+                      backgroundColor: result.semak_mule_found ? theme.danger + "22" : theme.safe + "22",
+                      borderColor: result.semak_mule_found ? theme.danger : theme.safe,
+                    }]}>
+                      <Text style={{ fontSize: 16 }}>{result.semak_mule_found ? "🚨" : "✅"}</Text>
+                      <Text style={[styles.semakMuleResultText, { color: result.semak_mule_found ? theme.danger : theme.safe }]}>
                         {result.semak_mule_found
-                          ? `${result.semak_mule_reports} scam report(s) on Semak Mule`
-                          : "No reports on Semak Mule"}
+                          ? `${result.semak_mule_reports} scam report(s) on PDRM Semak Mule`
+                          : "No reports on PDRM Semak Mule"}
                       </Text>
                     </View>
                   )}
-                  {result.semak_mule_url && (
-                    <TouchableOpacity
-                      style={styles.semakMuleButton}
-                      onPress={() => Linking.openURL(result.semak_mule_url)}
-                    >
-                      <Text style={styles.semakMuleText}>🔍 {t.checkSemakMule}</Text>
-                    </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Bank account result */}
+              {result.bank_scanned && (
+                <View style={[styles.detailBox, { marginTop: 10 }]}>
+                  <Text style={styles.detailLabel}>🏦 Bank Account Checked</Text>
+                  <Text style={styles.detailValue}>{result.bank_scanned}</Text>
+                  {result.bank_semak_found != null && (
+                    <View style={[styles.semakMuleResult, {
+                      backgroundColor: result.bank_semak_found ? theme.danger + "22" : theme.safe + "22",
+                      borderColor: result.bank_semak_found ? theme.danger : theme.safe,
+                    }]}>
+                      <Text style={{ fontSize: 16 }}>{result.bank_semak_found ? "🚨" : "✅"}</Text>
+                      <Text style={[styles.semakMuleResultText, { color: result.bank_semak_found ? theme.danger : theme.safe }]}>
+                        {result.bank_semak_found
+                          ? `${result.bank_semak_reports} scam report(s) on PDRM Semak Mule`
+                          : "No reports on PDRM Semak Mule"}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* Email result */}
+              {result.email_scanned && (
+                <View style={[styles.detailBox, { marginTop: 10 }]}>
+                  <Text style={styles.detailLabel}>📧 Email Checked</Text>
+                  <Text style={styles.detailValue}>{result.email_scanned}</Text>
+                  {result.email_semak_found != null && (
+                    <View style={[styles.semakMuleResult, {
+                      backgroundColor: result.email_semak_found ? theme.danger + "22" : theme.safe + "22",
+                      borderColor: result.email_semak_found ? theme.danger : theme.safe,
+                    }]}>
+                      <Text style={{ fontSize: 16 }}>{result.email_semak_found ? "🚨" : "✅"}</Text>
+                      <Text style={[styles.semakMuleResultText, { color: result.email_semak_found ? theme.danger : theme.safe }]}>
+                        {result.email_semak_found
+                          ? `${result.email_semak_reports} scam report(s) on PDRM Semak Mule`
+                          : "No reports on PDRM Semak Mule"}
+                      </Text>
+                    </View>
                   )}
                 </View>
               )}

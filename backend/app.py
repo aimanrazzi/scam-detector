@@ -216,39 +216,43 @@ def check_ip_virustotal(ip):
     }
 
 
-# ── Helper: Check phone on Semak Mule (PDRM) ─────────────
-def check_semak_mule(phone):
-    """Returns {'reports': int, 'found': bool} or None on failure."""
-    digits_only = re.sub(r'\D', '', phone)
-    # Semak Mule expects local format (no +60 prefix)
-    local = digits_only
-    if local.startswith('60') and len(local) > 10:
-        local = '0' + local[2:]
-
+# ── Helper: Semak Mule API (PDRM) ────────────────────────
+def _semak_mule_query(category, value):
+    """Generic Semak Mule query. category: telefon | akaun | email"""
     url = "https://semakmule.rmp.gov.my/api/mule/get_search_data.php"
-    payload = json.dumps({"data": {"category": "telefon", "telNo": local}}).encode()
+    field = {"telefon": "telNo", "akaun": "noAkaun", "email": "email"}.get(category, "telNo")
+    payload = json.dumps({"data": {"category": category, field: value}}).encode()
     try:
-        req = requests.post(
-            url,
-            data=payload,
-            headers={
-                "User-Agent": "Mozilla/5.0",
-                "Content-Type": "application/json",
-                "apikey": "j3j389#nklala2",
-                "Referer": "https://semakmule.rmp.gov.my/",
-            },
-            timeout=8,
-        )
-        print(f"[SemakMule] status={req.status_code} phone={local} body={req.text[:200]}")
+        req = requests.post(url, data=payload, headers={
+            "User-Agent": "Mozilla/5.0",
+            "Content-Type": "application/json",
+            "apikey": "j3j389#nklala2",
+            "Referer": "https://semakmule.rmp.gov.my/",
+        }, timeout=10)
+        print(f"[SemakMule] category={category} value={value} status={req.status_code} body={req.text[:200]}")
         if req.status_code == 200:
             data = req.json()
             if data.get("status") == 1 and data.get("table_data"):
                 reports = data["table_data"][0][1] if data["table_data"] else 0
-                return {"reports": reports, "found": reports > 0, "local": local}
-            return {"reports": 0, "found": False, "local": local}
+                return {"reports": reports, "found": reports > 0}
+            return {"reports": 0, "found": False}
     except Exception as e:
         print(f"[SemakMule] failed: {e}")
     return None
+
+def check_semak_mule(phone):
+    digits_only = re.sub(r'\D', '', phone)
+    local = digits_only
+    if local.startswith('60') and len(local) > 10:
+        local = '0' + local[2:]
+    return _semak_mule_query("telefon", local)
+
+def check_semak_mule_bank(account):
+    digits_only = re.sub(r'\D', '', account)
+    return _semak_mule_query("akaun", digits_only)
+
+def check_semak_mule_email(email):
+    return _semak_mule_query("email", email.strip().lower())
 
 
 # ── Helper: Check phone number with NumVerify ─────────────
@@ -305,13 +309,26 @@ def extract_ip(text):
 
 # ── Helper: Extract phone number ──────────────────────────
 def extract_phone(text):
-    pattern = r'(\+?[\d\s\-\(\)]{7,15})'
+    pattern = r'(\+?6?0\d[\d\s\-]{7,12})'  # Malaysian format: 01x, 03x, +601x
     matches = re.findall(pattern, text)
     for match in matches:
         digits = re.sub(r'\D', '', match)
-        if 7 <= len(digits) <= 15:
+        if 9 <= len(digits) <= 12:
             return match.strip()
     return None
+
+# ── Helper: Extract bank account number ───────────────────
+def extract_bank_account(text):
+    # Bank accounts: 10-16 digit standalone numbers
+    matches = re.findall(r'\b(\d{10,16})\b', text)
+    for m in matches:
+        return m
+    return None
+
+# ── Helper: Extract email ─────────────────────────────────
+def extract_email(text):
+    match = re.search(r'[\w.+-]+@[\w-]+\.[a-zA-Z]{2,}', text)
+    return match.group(0) if match else None
 
 
 # ── Helper: Analyze image with Gemini Vision ─────────────
@@ -787,15 +804,26 @@ def analyze():
             if detected_ip:
                 ip_result = check_ip_virustotal(detected_ip)
 
-        # Step 4: Phone check
+        # Step 4: Phone / bank account / email check
         phone_result = None
         semak_result = None
         detected_phone = None
+        detected_bank = None
+        detected_email = None
+        bank_semak = None
+        email_semak = None
         if not detected_url and not detected_ip:
             detected_phone = extract_phone(text)
             if detected_phone:
                 phone_result = check_phone_numverify(detected_phone)
                 semak_result = check_semak_mule(detected_phone)
+            if not detected_phone:
+                detected_bank = extract_bank_account(text)
+                if detected_bank:
+                    bank_semak = check_semak_mule_bank(detected_bank)
+            detected_email = extract_email(text)
+            if detected_email:
+                email_semak = check_semak_mule_email(detected_email)
 
         # Step 5: Dataset check for malicious URLs
         dataset_label = None
@@ -834,26 +862,33 @@ def analyze():
                 ]
             _update_status(ai_result)
 
-        # Semak Mule reports boost score
-        if semak_result and semak_result["found"]:
-            reports = semak_result["reports"]
-            boost = min(60, reports * 20)  # +20 per report, capped at +60
-            ai_result["score"] = min(100, ai_result["score"] + boost)
-            ai_result["findings"] = ai_result.get("findings", []) + [
-                f"⚠️ This number has {reports} scam report(s) on Semak Mule (PDRM database)."
-            ]
-            _update_status(ai_result)
-        elif semak_result and not semak_result["found"]:
-            ai_result["findings"] = ai_result.get("findings", []) + [
-                "✅ No reports found on Semak Mule (PDRM database)."
-            ]
+        def _apply_semak_boost(result, label):
+            if result and result["found"]:
+                reports = result["reports"]
+                boost = min(60, reports * 20)
+                ai_result["score"] = min(100, ai_result["score"] + boost)
+                ai_result["findings"] = ai_result.get("findings", []) + [
+                    f"🚨 {label} has {reports} scam report(s) on Semak Mule (PDRM)."
+                ]
+                _update_status(ai_result)
+            elif result and not result["found"]:
+                ai_result["findings"] = ai_result.get("findings", []) + [
+                    f"✅ {label} — no reports found on Semak Mule (PDRM)."
+                ]
+            else:
+                ai_result["findings"] = ai_result.get("findings", []) + [
+                    f"⚠️ Could not reach Semak Mule to verify {label}."
+                ]
+
+        if detected_phone:
+            _apply_semak_boost(semak_result, "This phone number")
+        if detected_bank:
+            _apply_semak_boost(bank_semak, "This bank account")
+        if detected_email:
+            _apply_semak_boost(email_semak, "This email address")
 
         # Final status sync — always reflect the actual score
         _update_status(ai_result)
-
-        # Build semak_mule_url from digits (works even if numverify failed)
-        digits_only = re.sub(r'\D', '', detected_phone) if detected_phone else ""
-        semak_url = f"https://semakmule.rmp.gov.my/?phone={digits_only}" if digits_only else None
 
         return jsonify({
             "score": ai_result["score"],
@@ -876,7 +911,12 @@ def analyze():
             "phone_international": phone_result.get("international_format") if phone_result else None,
             "semak_mule_reports": semak_result["reports"] if semak_result else None,
             "semak_mule_found": semak_result["found"] if semak_result else None,
-            "semak_mule_url": semak_url,
+            "bank_scanned": detected_bank,
+            "bank_semak_found": bank_semak["found"] if bank_semak else None,
+            "bank_semak_reports": bank_semak["reports"] if bank_semak else None,
+            "email_scanned": detected_email,
+            "email_semak_found": email_semak["found"] if email_semak else None,
+            "email_semak_reports": email_semak["reports"] if email_semak else None,
         })
 
     except Exception as e:
