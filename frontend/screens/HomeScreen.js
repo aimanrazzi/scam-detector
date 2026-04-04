@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState } from "react"; // eslint-disable-line
 import {
   StyleSheet,
   Text,
@@ -10,19 +10,29 @@ import {
   StatusBar,
   Image,
   Share,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useLang } from "../context/LanguageContext";
+import { useTheme } from "../context/ThemeContext";
+import { translations } from "../utils/translations";
+import LanguageSelector from "../components/LanguageSelector";
 
 const BACKEND_URL = "http://192.168.0.14:5000"; // Your PC's local IP
 
 export default function HomeScreen() {
+  const { lang } = useLang();
+  const t = translations[lang] || translations.en;
+  const { theme } = useTheme();
   const [inputText, setInputText] = useState("");
   const [image, setImage] = useState(null);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  const styles = makeStyles(theme);
 
   const pickImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -76,10 +86,11 @@ export default function HomeScreen() {
         body = JSON.stringify({
           image: image.base64,
           mime_type: image.mimeType || "image/jpeg",
+          lang,
         });
         headers = { "Content-Type": "application/json" };
       } else {
-        body = JSON.stringify({ text: inputText.trim() });
+        body = JSON.stringify({ text: inputText.trim(), lang });
         headers = { "Content-Type": "application/json" };
       }
 
@@ -117,16 +128,16 @@ export default function HomeScreen() {
   };
 
   const getStatusColor = (status) => {
-    if (status === "SAFE") return "#22c55e";
-    if (status === "SUSPICIOUS") return "#f59e0b";
-    if (status === "SCAM") return "#ef4444";
-    return "#ffffff";
+    if (status === "SAFE") return theme.safe;
+    if (status === "SUSPICIOUS") return theme.warning;
+    if (status === "SCAM") return theme.danger;
+    return theme.text;
   };
 
   const getScoreBarColor = (score) => {
-    if (score <= 30) return "#22c55e";
-    if (score <= 69) return "#f59e0b";
-    return "#ef4444";
+    if (score <= 30) return theme.safe;
+    if (score <= 69) return theme.warning;
+    return theme.danger;
   };
 
   const reset = () => {
@@ -147,14 +158,16 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#0f0f0f" />
+        <StatusBar barStyle={theme.isDark ? "light-content" : "dark-content"} backgroundColor={theme.background} />
+        {/* Language selector — fixed at top, outside scroll */}
+        <LanguageSelector />
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
 
           {/* Header */}
           <View style={styles.header}>
             <Text style={styles.headerIcon}>🛡️</Text>
-            <Text style={styles.title}>Scam Detector</Text>
-            <Text style={styles.subtitle}>Check if a message, link, phone number, job offer, or screenshot is a scam</Text>
+            <Text style={styles.title}>{t.title}</Text>
+            <Text style={styles.subtitle}>{t.subtitle}</Text>
           </View>
 
           {/* Image preview */}
@@ -162,7 +175,7 @@ export default function HomeScreen() {
             <View style={styles.imagePreviewBox}>
               <Image source={{ uri: image.uri }} style={styles.imagePreview} resizeMode="cover" />
               <TouchableOpacity style={styles.removeImage} onPress={() => setImage(null)}>
-                <Text style={styles.removeImageText}>✕ Remove</Text>
+                <Text style={styles.removeImageText}>✕ {t.removeImage}</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -172,8 +185,8 @@ export default function HomeScreen() {
             <View style={styles.inputContainer}>
               <TextInput
                 style={styles.input}
-                placeholder="Paste a suspicious message, URL, phone number, IP address, or job offer..."
-                placeholderTextColor="#555"
+                placeholder={t.placeholder}
+                placeholderTextColor={theme.subtext}
                 multiline
                 value={inputText}
                 onChangeText={setInputText}
@@ -185,10 +198,10 @@ export default function HomeScreen() {
           {!image && (
             <View style={styles.imageButtonRow}>
               <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
-                <Text style={styles.imageButtonText}>🖼️ Upload Screenshot</Text>
+                <Text style={styles.imageButtonText}>🖼️ {t.uploadScreenshot}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.imageButton} onPress={takePhoto}>
-                <Text style={styles.imageButtonText}>📷 Take Photo</Text>
+                <Text style={styles.imageButtonText}>📷 {t.takePhoto}</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -203,13 +216,13 @@ export default function HomeScreen() {
               {loading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.analyzeButtonText}>Check Now</Text>
+                <Text style={styles.analyzeButtonText}>{t.checkNow}</Text>
               )}
             </TouchableOpacity>
 
             {(result || error || image) && (
               <TouchableOpacity style={styles.resetButton} onPress={reset}>
-                <Text style={styles.resetButtonText}>Clear</Text>
+                <Text style={styles.resetButtonText}>{t.clear}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -228,16 +241,16 @@ export default function HomeScreen() {
               <View style={styles.statusRow}>
                 <View style={[styles.statusBadge, { backgroundColor: getStatusColor(result.status) + "22", borderColor: getStatusColor(result.status) }]}>
                   <Text style={[styles.statusText, { color: getStatusColor(result.status) }]}>
-                    {result.status === "SAFE" ? "✅ SAFE" : result.status === "SUSPICIOUS" ? "⚠️ SUSPICIOUS" : "🚨 SCAM DETECTED"}
+                    {result.status === "SAFE" ? `✅ ${t.safe}` : result.status === "SUSPICIOUS" ? `⚠️ ${t.suspicious}` : `🚨 ${t.scamDetected}`}
                   </Text>
                 </View>
                 <TouchableOpacity style={styles.shareButton} onPress={shareResult}>
-                  <Text style={styles.shareButtonText}>⬆ Share</Text>
+                  <Text style={styles.shareButtonText}>⬆ {t.shareResult}</Text>
                 </TouchableOpacity>
               </View>
 
               {/* Score */}
-              <Text style={styles.scoreLabel}>Risk Score: {result.score}/100</Text>
+              <Text style={styles.scoreLabel}>{t.riskScore}: {result.score}/100</Text>
               <View style={styles.scoreBarBg}>
                 <View
                   style={[
@@ -251,16 +264,27 @@ export default function HomeScreen() {
               </View>
 
               {/* Reason */}
-              <Text style={styles.reasonLabel}>What we found</Text>
-              <Text style={styles.reasonText}>{result.reason}</Text>
+              <Text style={styles.reasonLabel}>{t.whatWeFound}</Text>
+              {result.findings && result.findings.length > 0 ? (
+                <View style={styles.findingsList}>
+                  {result.findings.map((f, i) => (
+                    <View key={i} style={styles.findingRow}>
+                      <Text style={styles.findingBullet}>•</Text>
+                      <Text style={styles.findingText}>{f}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <Text style={styles.reasonText}>{result.reason}</Text>
+              )}
 
               {/* URL scan result */}
               {result.url_scanned && (
                 <View style={styles.detailBox}>
-                  <Text style={styles.detailLabel}>Link Checked</Text>
+                  <Text style={styles.detailLabel}>{t.linkChecked}</Text>
                   <Text style={styles.detailValue}>{result.url_scanned}</Text>
-                  <Text style={[styles.detailStatus, { color: result.url_flagged ? "#ef4444" : "#22c55e" }]}>
-                    {result.url_flagged ? "🚨 Flagged as dangerous by VirusTotal" : "✅ No threats found on VirusTotal"}
+                  <Text style={[styles.detailStatus, { color: result.url_flagged ? theme.danger : theme.safe }]}>
+                    {result.url_flagged ? `🚨 ${t.flaggedVT}` : `✅ ${t.safeVT}`}
                   </Text>
                 </View>
               )}
@@ -268,10 +292,10 @@ export default function HomeScreen() {
               {/* IP scan result */}
               {result.ip_scanned && (
                 <View style={[styles.detailBox, { marginTop: 10 }]}>
-                  <Text style={styles.detailLabel}>IP Address Checked</Text>
+                  <Text style={styles.detailLabel}>{t.ipChecked}</Text>
                   <Text style={styles.detailValue}>{result.ip_scanned}</Text>
-                  <Text style={[styles.detailStatus, { color: result.ip_flagged ? "#ef4444" : "#22c55e" }]}>
-                    {result.ip_flagged ? "🚨 Flagged as dangerous by VirusTotal" : "✅ No threats found on VirusTotal"}
+                  <Text style={[styles.detailStatus, { color: result.ip_flagged ? theme.danger : theme.safe }]}>
+                    {result.ip_flagged ? `🚨 ${t.flaggedVT}` : `✅ ${t.safeVT}`}
                   </Text>
                 </View>
               )}
@@ -279,11 +303,19 @@ export default function HomeScreen() {
               {/* Phone result */}
               {result.phone_scanned && (
                 <View style={[styles.detailBox, { marginTop: 10 }]}>
-                  <Text style={styles.detailLabel}>Phone Number Checked</Text>
+                  <Text style={styles.detailLabel}>{t.phoneChecked}</Text>
                   <Text style={styles.detailValue}>{result.phone_scanned}</Text>
-                  <Text style={[styles.detailStatus, { color: result.phone_valid ? "#22c55e" : "#ef4444" }]}>
-                    {result.phone_valid ? `✅ ${result.phone_info}` : "❌ Invalid or unrecognized number"}
+                  <Text style={[styles.detailStatus, { color: result.phone_valid ? theme.safe : theme.danger }]}>
+                    {result.phone_valid ? `✅ ${result.phone_info}` : `❌ ${t.invalidPhone}`}
                   </Text>
+                  {result.semak_mule_url && (
+                    <TouchableOpacity
+                      style={styles.semakMuleButton}
+                      onPress={() => Linking.openURL(result.semak_mule_url)}
+                    >
+                      <Text style={styles.semakMuleText}>🔍 {t.checkSemakMule}</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               )}
             </View>
@@ -293,10 +325,10 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0f0f0f",
+    backgroundColor: theme.background,
   },
   scroll: {
     padding: 20,
@@ -314,12 +346,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: "bold",
-    color: "#ffffff",
+    color: theme.text,
     marginBottom: 6,
   },
   subtitle: {
     fontSize: 14,
-    color: "#888",
+    color: theme.subtext,
     textAlign: "center",
     lineHeight: 20,
   },
@@ -328,9 +360,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "#2a2a2a",
+    borderColor: theme.border,
     alignItems: "center",
-    backgroundColor: "#1a1a1a",
+    backgroundColor: theme.surface,
     padding: 12,
   },
   imagePreview: {
@@ -339,24 +371,24 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   removeImage: {
-    backgroundColor: "#1a1a1a",
+    backgroundColor: theme.surface,
     padding: 10,
     alignItems: "center",
   },
   removeImageText: {
-    color: "#ef4444",
+    color: theme.danger,
     fontSize: 13,
   },
   inputContainer: {
     marginBottom: 12,
   },
   input: {
-    backgroundColor: "#1a1a1a",
-    borderColor: "#2a2a2a",
+    backgroundColor: theme.surface,
+    borderColor: theme.border,
     borderWidth: 1,
     borderRadius: 12,
     padding: 16,
-    color: "#ffffff",
+    color: theme.text,
     fontSize: 15,
     minHeight: 130,
     textAlignVertical: "top",
@@ -368,15 +400,15 @@ const styles = StyleSheet.create({
   },
   imageButton: {
     flex: 1,
-    backgroundColor: "#1a1a1a",
+    backgroundColor: theme.surface,
     borderWidth: 1,
-    borderColor: "#2a2a2a",
+    borderColor: theme.border,
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: "center",
   },
   imageButtonText: {
-    color: "#aaa",
+    color: theme.subtext,
     fontSize: 13,
   },
   buttonRow: {
@@ -386,13 +418,13 @@ const styles = StyleSheet.create({
   },
   analyzeButton: {
     flex: 1,
-    backgroundColor: "#6366f1",
+    backgroundColor: theme.accent,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: "center",
   },
   disabledButton: {
-    backgroundColor: "#2a2a2a",
+    backgroundColor: theme.surfaceHigh,
   },
   analyzeButtonText: {
     color: "#fff",
@@ -406,47 +438,47 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   shareButton: {
-    backgroundColor: "#1a1a1a",
+    backgroundColor: theme.surface,
     borderWidth: 1,
-    borderColor: "#2a2a2a",
+    borderColor: theme.border,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
   shareButtonText: {
-    color: "#aaa",
+    color: theme.subtext,
     fontSize: 13,
   },
   resetButton: {
-    backgroundColor: "#1a1a1a",
+    backgroundColor: theme.surface,
     paddingVertical: 14,
     paddingHorizontal: 20,
     borderRadius: 12,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#2a2a2a",
+    borderColor: theme.border,
   },
   resetButtonText: {
-    color: "#888",
+    color: theme.subtext,
     fontSize: 15,
   },
   errorBox: {
-    backgroundColor: "#ef444422",
-    borderColor: "#ef4444",
+    backgroundColor: theme.danger + "22",
+    borderColor: theme.danger,
     borderWidth: 1,
     borderRadius: 12,
     padding: 16,
   },
   errorText: {
-    color: "#ef4444",
+    color: theme.danger,
     fontSize: 14,
   },
   resultCard: {
-    backgroundColor: "#1a1a1a",
+    backgroundColor: theme.surface,
     borderRadius: 16,
     padding: 20,
     borderWidth: 1,
-    borderColor: "#2a2a2a",
+    borderColor: theme.border,
   },
   statusBadge: {
     alignSelf: "flex-start",
@@ -460,12 +492,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   scoreLabel: {
-    color: "#aaa",
+    color: theme.subtext,
     fontSize: 13,
     marginBottom: 8,
   },
   scoreBarBg: {
-    backgroundColor: "#2a2a2a",
+    backgroundColor: theme.surfaceHigh,
     borderRadius: 999,
     height: 10,
     marginBottom: 20,
@@ -476,34 +508,67 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   reasonLabel: {
-    color: "#aaa",
+    color: theme.subtext,
     fontSize: 13,
     marginBottom: 6,
   },
   reasonText: {
-    color: "#ffffff",
+    color: theme.text,
     fontSize: 15,
     lineHeight: 22,
     marginBottom: 16,
   },
+  findingsList: {
+    marginBottom: 16,
+  },
+  findingRow: {
+    flexDirection: "row",
+    marginBottom: 6,
+  },
+  findingBullet: {
+    color: theme.accent,
+    fontSize: 15,
+    marginRight: 8,
+    lineHeight: 22,
+  },
+  findingText: {
+    color: theme.text,
+    fontSize: 14,
+    lineHeight: 22,
+    flex: 1,
+  },
   detailBox: {
-    backgroundColor: "#0f0f0f",
+    backgroundColor: theme.background,
     borderRadius: 10,
     padding: 14,
     borderWidth: 1,
-    borderColor: "#2a2a2a",
+    borderColor: theme.border,
   },
   detailLabel: {
-    color: "#888",
+    color: theme.subtext,
     fontSize: 12,
     marginBottom: 4,
   },
   detailValue: {
-    color: "#6366f1",
+    color: theme.accent,
     fontSize: 13,
     marginBottom: 6,
   },
   detailStatus: {
+    fontSize: 13,
+    fontWeight: "bold",
+  },
+  semakMuleButton: {
+    marginTop: 10,
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.accent,
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  semakMuleText: {
+    color: theme.accent,
     fontSize: 13,
     fontWeight: "bold",
   },

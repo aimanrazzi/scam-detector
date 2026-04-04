@@ -1,5 +1,8 @@
 flask
 flask-cors
-google-genai
+groq
+google-generativeai
+Pillow
 python-dotenv
 requests
+google-search-results

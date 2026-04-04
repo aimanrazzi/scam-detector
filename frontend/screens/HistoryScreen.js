@@ -10,9 +10,17 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
+import { useLang } from "../context/LanguageContext";
+import { useTheme } from "../context/ThemeContext";
+import { translations } from "../utils/translations";
 
 export default function HistoryScreen() {
+  const { lang } = useLang();
+  const t = translations[lang] || translations.en;
+  const { theme } = useTheme();
   const [history, setHistory] = useState([]);
+
+  const styles = makeStyles(theme);
 
   useFocusEffect(
     useCallback(() => {
@@ -28,10 +36,10 @@ export default function HistoryScreen() {
   };
 
   const clearHistory = () => {
-    Alert.alert("Clear History", "Are you sure you want to delete all scan history?", [
-      { text: "Cancel", style: "cancel" },
+    Alert.alert(t.clearHistory, t.clearHistoryConfirm, [
+      { text: t.cancel, style: "cancel" },
       {
-        text: "Clear", style: "destructive", onPress: async () => {
+        text: t.clearAll, style: "destructive", onPress: async () => {
           await AsyncStorage.removeItem("scan_history");
           setHistory([]);
         }
@@ -40,9 +48,9 @@ export default function HistoryScreen() {
   };
 
   const getStatusColor = (status) => {
-    if (status === "SAFE") return "#22c55e";
-    if (status === "SUSPICIOUS") return "#f59e0b";
-    return "#ef4444";
+    if (status === "SAFE") return theme.safe;
+    if (status === "SUSPICIOUS") return theme.warning;
+    return theme.danger;
   };
 
   const getStatusIcon = (status) => {
@@ -56,12 +64,14 @@ export default function HistoryScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.headerRow}>
           <View>
-            <Text style={styles.title}>Scan History</Text>
-            <Text style={styles.subtitle}>{history.length} past scan{history.length !== 1 ? "s" : ""}</Text>
+            <Text style={styles.title}>{t.scanHistory}</Text>
+            <Text style={styles.subtitle}>
+              {history.length} {history.length !== 1 ? t.pastScans : t.pastScan}
+            </Text>
           </View>
           {history.length > 0 && (
             <TouchableOpacity onPress={clearHistory}>
-              <Text style={styles.clearText}>Clear All</Text>
+              <Text style={styles.clearText}>{t.clearAll}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -69,8 +79,8 @@ export default function HistoryScreen() {
         {history.length === 0 ? (
           <View style={styles.emptyBox}>
             <Text style={styles.emptyIcon}>📋</Text>
-            <Text style={styles.emptyText}>No scans yet</Text>
-            <Text style={styles.emptySubtext}>Your past checks will appear here</Text>
+            <Text style={styles.emptyText}>{t.noScansYet}</Text>
+            <Text style={styles.emptySubtext}>{t.scansWillAppear}</Text>
           </View>
         ) : (
           history.slice().reverse().map((item, index) => (
@@ -94,8 +104,8 @@ export default function HistoryScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0f0f0f" },
+const makeStyles = (theme) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: theme.background },
   scroll: { padding: 20, paddingBottom: 40 },
   headerRow: {
     flexDirection: "row",
@@ -104,26 +114,26 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     marginTop: 10,
   },
-  title: { fontSize: 24, fontWeight: "bold", color: "#fff" },
-  subtitle: { fontSize: 13, color: "#888", marginTop: 4 },
-  clearText: { color: "#ef4444", fontSize: 13, marginTop: 8 },
+  title: { fontSize: 24, fontWeight: "bold", color: theme.text },
+  subtitle: { fontSize: 13, color: theme.subtext, marginTop: 4 },
+  clearText: { color: theme.danger, fontSize: 13, marginTop: 8 },
   emptyBox: { alignItems: "center", marginTop: 80 },
   emptyIcon: { fontSize: 48, marginBottom: 12 },
-  emptyText: { fontSize: 18, color: "#fff", fontWeight: "bold", marginBottom: 6 },
-  emptySubtext: { fontSize: 14, color: "#888" },
+  emptyText: { fontSize: 18, color: theme.text, fontWeight: "bold", marginBottom: 6 },
+  emptySubtext: { fontSize: 14, color: theme.subtext },
   card: {
-    backgroundColor: "#1a1a1a",
+    backgroundColor: theme.surface,
     borderRadius: 14,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#2a2a2a",
+    borderColor: theme.border,
   },
   cardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
   badge: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 3 },
   badgeText: { fontSize: 12, fontWeight: "bold" },
-  score: { fontSize: 13, color: "#aaa" },
-  inputText: { fontSize: 14, color: "#fff", marginBottom: 6 },
-  reason: { fontSize: 13, color: "#aaa", lineHeight: 18, marginBottom: 8 },
-  date: { fontSize: 11, color: "#555" },
+  score: { fontSize: 13, color: theme.subtext },
+  inputText: { fontSize: 14, color: theme.text, marginBottom: 6 },
+  reason: { fontSize: 13, color: theme.subtext, lineHeight: 18, marginBottom: 8 },
+  date: { fontSize: 11, color: theme.subtext },
 });

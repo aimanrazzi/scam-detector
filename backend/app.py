@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from google import genai
+from groq import Groq
 import requests
 import os
 import re
@@ -13,13 +13,45 @@ app = Flask(__name__)
 CORS(app)
 
 # ── Clients ──────────────────────────────────────────────
-gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 VIRUSTOTAL_API_KEY = os.getenv("VIRUSTOTAL_API_KEY")
 NUMVERIFY_API_KEY = os.getenv("NUMVERIFY_API_KEY")
+SERPAPI_KEY = os.getenv("SERPAPI_KEY")
+IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")
+
+LANG_NAMES = {
+    "en": "English",
+    "ms": "Malay (Bahasa Malaysia)",
+    "zh": "Chinese (Simplified)",
+    "ta": "Tamil",
+}
 
 
-# ── Helper: Analyze text with Gemini AI ──────────────────
-def analyze_with_ai(text):
+# ── Helper: Extract JSON from AI response ────────────────
+def extract_json(raw):
+    raw = raw.strip()
+    # Try to find a JSON object anywhere in the response
+    match = re.search(r'\{.*\}', raw, re.DOTALL)
+    if match:
+        return json.loads(match.group(0))
+    raise ValueError(f"No JSON found in response: {raw[:200]}")
+
+
+# ── Helper: Resize image ─────────────────────────────────
+def resize_image_base64(image_base64, max_size=(512, 512)):
+    import base64
+    import io
+    from PIL import Image
+    image_bytes = base64.b64decode(image_base64)
+    img = Image.open(io.BytesIO(image_bytes))
+    img.thumbnail(max_size, Image.LANCZOS)
+    buffer = io.BytesIO()
+    img.save(buffer, format="JPEG", quality=60)
+    return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+
+# ── Helper: Analyze text with Groq AI ───────────────────
+def analyze_with_ai(text, lang="en"):
     prompt = f"""You are a scam and fraud detection assistant.
 
 The user has submitted the following input for you to analyze:
@@ -38,23 +70,27 @@ Respond ONLY in this exact JSON format with no extra text:
 {{
   "score": <number from 0 to 100>,
   "status": "<SAFE or SUSPICIOUS or SCAM>",
-  "reason": "<one clear sentence explaining the verdict based on the actual content, not the user's wording>"
+  "reason": "<one clear sentence summary of the verdict>",
+  "findings": ["<finding 1>", "<finding 2>", "<finding 3>"]
 }}
+
+For findings: list 2-4 short bullet points explaining specific indicators found (or not found). Each should be one short sentence.
 
 Scoring guide:
 - 0 to 30 = SAFE
 - 31 to 69 = SUSPICIOUS
-- 70 to 100 = SCAM"""
+- 70 to 100 = SCAM
 
-    response = gemini_client.models.generate_content(model="models/gemini-2.5-flash", contents=prompt)
+Respond with "reason" and all "findings" in {LANG_NAMES.get(lang, "English")}."""
 
-    raw = response.text.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-    result = json.loads(raw.strip())
-    return result
+    response = groq_client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.1,
+    )
+
+    raw = response.choices[0].message.content.strip()
+    return extract_json(raw)
 
 
 # ── Helper: Check URL with VirusTotal ────────────────────
@@ -141,13 +177,16 @@ def check_phone_numverify(phone):
     if not data.get("valid"):
         return {"valid": False, "flagged": False, "info": "Invalid phone number"}
 
+    digits_only = re.sub(r'\D', '', phone)
+
     return {
         "valid": True,
         "flagged": False,
         "country": data.get("country_name", "Unknown"),
         "carrier": data.get("carrier", "Unknown"),
         "line_type": data.get("line_type", "Unknown"),
-        "info": f"{data.get('country_name', '')} · {data.get('carrier', '')} · {data.get('line_type', '')}"
+        "info": f"{data.get('country_name', '')} · {data.get('carrier', '')} · {data.get('line_type', '')}",
+        "semak_mule_url": f"https://semakmule.rmp.gov.my/?phone={digits_only}"
     }
 
 
@@ -177,9 +216,8 @@ def extract_phone(text):
 
 
 # ── Helper: Analyze image with Gemini Vision ─────────────
-def analyze_image_with_ai(image_base64, mime_type):
-    import base64
-    from google.genai import types
+def analyze_image_with_ai(image_base64, mime_type, lang="en"):
+    image_base64 = resize_image_base64(image_base64, max_size=(800, 800))
 
     prompt = """You are a scam and fraud detection assistant.
 Analyze this screenshot for any scam indicators — suspicious messages, phishing links, fake offers, urgent requests, or fraud.
@@ -188,30 +226,353 @@ Respond ONLY in this exact JSON format with no extra text:
 {
   "score": <number from 0 to 100>,
   "status": "<SAFE or SUSPICIOUS or SCAM>",
-  "reason": "<one clear sentence explaining why>"
+  "reason": "<one clear sentence summary of the verdict>",
+  "findings": ["<finding 1>", "<finding 2>", "<finding 3>"]
 }
+
+For findings: list 2-4 short bullet points of specific indicators found (or not found). Each should be one short sentence.
 
 Scoring guide:
 - 0 to 30 = SAFE
 - 31 to 69 = SUSPICIOUS
-- 70 to 100 = SCAM"""
+- 70 to 100 = SCAM
 
-    image_bytes = base64.b64decode(image_base64)
+Respond with "reason" and all "findings" in """ + LANG_NAMES.get(lang, "English") + "."
 
-    response = gemini_client.models.generate_content(
-        model="models/gemini-2.5-flash",
-        contents=[
-            types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-            prompt
-        ]
+    response = groq_client.chat.completions.create(
+        model="meta-llama/llama-4-scout-17b-16e-instruct",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{mime_type};base64,{image_base64}"
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "text": prompt
+                    }
+                ]
+            }
+        ],
+        temperature=0.1,
     )
 
-    raw = response.text.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-    return json.loads(raw.strip())
+    raw = response.choices[0].message.content.strip()
+    return extract_json(raw)
+
+
+# ── Helper: Upload image to ImgBB for temporary hosting ──
+def upload_to_imgbb(image_base64):
+    if not IMGBB_API_KEY:
+        return None
+    try:
+        response = requests.post(
+            "https://api.imgbb.com/1/upload",
+            data={"key": IMGBB_API_KEY, "image": image_base64},
+            timeout=15
+        )
+        if response.status_code == 200:
+            return response.json()["data"]["url"]
+    except Exception:
+        pass
+    return None
+
+
+# ── Helper: Reverse image search with SerpApi ────────────
+def reverse_image_search(image_base64):
+    if not SERPAPI_KEY:
+        return None
+
+    # Upload to ImgBB to get a public URL for SerpApi
+    image_url = upload_to_imgbb(image_base64)
+    if not image_url:
+        return None
+
+    try:
+        response = requests.get(
+            "https://serpapi.com/search",
+            params={
+                "engine": "google_reverse_image",
+                "image_url": image_url,
+                "api_key": SERPAPI_KEY,
+            },
+            timeout=20
+        )
+    except Exception:
+        return None
+
+    if response.status_code != 200:
+        return None
+
+    data = response.json()
+    # Only use image_results (near-exact matches), not inline_images (visually similar)
+    results = data.get("image_results", [])
+    total_found = len(results)
+    sites = [r.get("link", "") for r in results[:10]]
+
+    # Extract knowledge graph (identifies public figures by face)
+    kg = data.get("knowledge_graph", {})
+    person_name = kg.get("title") or kg.get("name")
+    person_type = kg.get("type") or kg.get("description", "")
+    person_social = []
+    for profile in kg.get("social_profiles", []):
+        person_social.append(profile.get("name", ""))
+
+    # Only profile-type platforms matter for impersonation detection
+    profile_platforms_map = {
+        "Instagram": "instagram.com",
+        "Facebook": "facebook.com",
+        "Twitter/X": "twitter.com",
+        "TikTok": "tiktok.com",
+        "LinkedIn": "linkedin.com",
+    }
+    found_platforms = list(person_social)
+    for site in sites:
+        for platform, domain in profile_platforms_map.items():
+            if domain in site and platform not in found_platforms:
+                found_platforms.append(platform)
+
+    return {
+        "total_found": total_found,
+        "sites": [],
+        "found_online": len(found_platforms) > 0 or bool(person_name),
+        "social_platforms": found_platforms,
+        "found_on_social": len(found_platforms) > 0,
+        "person_name": person_name,
+        "person_type": person_type,
+    }
+
+
+# ── Helper: Analyze profile photo with Groq Vision ───────
+def analyze_profile_photo(image_base64, lang="en"):
+    image_base64 = resize_image_base64(image_base64)
+    prompt = """You are a scam detection assistant analyzing a profile photo.
+
+FIRST — determine if this image contains a real human person (face OR body).
+If the image contains NO human person at all (e.g. it is a cartoon, anime, game character, artwork, screenshot of text, meme, logo, animal, building, landscape with no person, or object), respond with:
+{
+  "score": 0,
+  "status": "INVALID",
+  "reason": "This image does not appear to contain a real person.",
+  "ai_generated": false,
+  "looks_like_stock": false
+}
+
+NOTE: Photos where the face is not clearly visible are still valid — underwater photos, silhouettes, photos from behind, action shots, and full-body photos with obscured faces should all be analyzed. Only reject if there is truly no human present.
+
+KEY RULE — Background analysis:
+- A REAL selfie background, even when blurred, shows identifiable real-world elements: furniture shapes, wall colors, trees, streets, people, windows, etc. You can tell WHERE the person is.
+- An AI-generated portrait background is a perfectly uniform, featureless blur or gradient — no identifiable location, no shapes, no context. This is a strong AI indicator.
+- A plain studio background (solid color, no environment) = stock or AI.
+
+Strong AI-generated signs:
+- Perfectly featureless blurred background — smooth gradient with zero identifiable real-world elements
+- Skin is flawless with zero pores, blemishes, or texture variation (not just smooth — completely poreless)
+- Hair is impossibly perfect with every strand rendered uniformly, no flyaways
+- Facial symmetry is unnaturally perfect
+- Lighting is perfectly even from all directions with no real light source visible
+- The overall image looks like a rendered portrait, not a photograph
+
+Stock photo signs:
+- Professional studio lighting against a plain solid or minimal background
+- Subject poses like a commercial model
+- No real-world environment visible
+
+Real person selfie signs (score low):
+- Background shows a real place even if slightly blurry (you can identify WHERE they are)
+- Candid or casual pose, selfie angle
+- Natural, directional lighting (from a window, lamp, outdoors)
+- Minor skin imperfections, natural hair
+- Everyday clothing, cultural attire
+
+Smartphone portrait mode creates NATURAL background blur that still shows environmental shapes. AI blur is a perfect featureless gradient.
+
+IMPORTANT — Dark or studio backgrounds:
+- A dark/black background in a gym, fitness, or portrait photo is NORMAL and does NOT indicate AI.
+- A fitness promotional photo, sports photo, or branded content photo with studio lighting is a REAL PHOTO, not AI — even if it looks professional.
+- Only flag as AI if you see multiple clear AI artifacts (merged features, warped elements, plastic skin texture).
+
+Also look for any visible social media UI in the image:
+- If you can see an Instagram, Facebook, TikTok, Twitter, or other social media username or handle (e.g. "@username", a verified badge, a profile name), extract it.
+
+Also check: Is this person a well-known public figure, celebrity, athlete, artist, or influencer that you recognise?
+
+Respond ONLY in this exact JSON format with no extra text:
+{
+  "score": <number from 0 to 100>,
+  "status": "<SAFE or SUSPICIOUS or SCAM>",
+  "reason": "<one clear sentence about the photo>",
+  "ai_generated": <true or false>,
+  "looks_like_stock": <true or false>,
+  "detected_handle": "<social media username if visible in image, or null>",
+  "detected_platform": "<platform name e.g. Instagram, or null>",
+  "known_person": "<full name of the person if you recognise them as a public figure, or null>",
+  "known_person_type": "<their role e.g. Singer, Actor, Athlete, or null>",
+  "findings": ["<finding 1>", "<finding 2>", "<finding 3>"]
+}
+
+Scoring guide:
+- 0 to 30 = SAFE — Looks like a genuine real person photo
+- 31 to 69 = SUSPICIOUS — Some suspicious signs, ambiguous
+- 70 to 100 = SCAM — Strong evidence of AI-generation or stock photo
+
+Respond with "reason" and all "findings" in """ + LANG_NAMES.get(lang, "English") + "."
+
+    response = groq_client.chat.completions.create(
+        model="meta-llama/llama-4-scout-17b-16e-instruct",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}
+                    },
+                    {"type": "text", "text": prompt}
+                ]
+            }
+        ],
+        temperature=0.1,
+    )
+
+    raw = response.choices[0].message.content.strip()
+    return extract_json(raw)
+
+
+# ── Profile Check Route ──────────────────────────────────
+@app.route("/check-profile", methods=["POST"])
+def check_profile():
+    data = request.get_json()
+    if not data or "image" not in data:
+        return jsonify({"error": "Please provide an image."}), 400
+
+    try:
+        # Step 1: Gemini vision analysis
+        lang = data.get("lang", "en")
+        ai_result = analyze_profile_photo(data["image"], lang)
+
+        # Step 2: Reverse image search
+        search_result = reverse_image_search(data["image"])
+
+        # Step 3: Reject non-person images
+        if ai_result.get("status") == "INVALID":
+            return jsonify({"error": "No person detected in this image. Please upload a photo that contains a real person (face, body, or action shot)."}), 400
+
+        # Step 4: Adjust score based on detected flags
+        not_on_profile_platform = not search_result or not search_result.get("found_on_social")
+
+        if ai_result.get("ai_generated"):
+            ai_result["score"] = min(100, ai_result["score"] + 15)
+            if ai_result["score"] >= 70:
+                ai_result["status"] = "SCAM"
+        elif ai_result.get("looks_like_stock"):
+            if not_on_profile_platform:
+                # Looks like stock BUT not found on social media profile platforms
+                # Could just be a professional/gym photo — cap at SUSPICIOUS, not SCAM
+                ai_result["score"] = min(60, ai_result["score"])
+                ai_result["status"] = "SUSPICIOUS"
+            else:
+                ai_result["score"] = min(100, ai_result["score"] + 10)
+                if ai_result["score"] >= 70:
+                    ai_result["status"] = "SCAM"
+        else:
+            # No suspicious flags — reduce score, likely a real photo
+            ai_result["score"] = max(0, ai_result["score"] - 20)
+            if ai_result["score"] < 31:
+                ai_result["status"] = "SAFE"
+
+        # Step 5: Process reverse image search results
+        impersonation_warning = None
+        online_summary = None
+        social_platforms = []
+        person_name = None
+        person_type = None
+        search_ran = search_result is not None
+
+        if search_result:
+            social_platforms = search_result.get("social_platforms", [])
+            person_name = search_result.get("person_name")
+            person_type = search_result.get("person_type", "")
+            is_ai = ai_result.get("ai_generated", False)
+
+            if not is_ai:
+                if person_name:
+                    # Google identified person by face (knowledge graph)
+                    type_str = f" ({person_type})" if person_type else ""
+                    platforms_str = f" on {', '.join(social_platforms)}" if social_platforms else ""
+                    impersonation_warning = (
+                        f"This photo appears to be of {person_name}{type_str}{platforms_str}. "
+                        f"If someone sent you this photo claiming to be them, they may be impersonating this person."
+                    )
+                    online_summary = f"Found on {search_result['total_found']} website(s) online."
+                elif search_result.get("found_on_social"):
+                    # Found on Instagram/Facebook/TikTok/LinkedIn/Twitter
+                    platforms_str = ", ".join(social_platforms)
+                    impersonation_warning = f"This photo was found on {platforms_str}. If someone sent you this photo, they may be impersonating the real person."
+                    online_summary = f"Found on {platforms_str}."
+                elif search_result["found_online"]:
+                    # Found online but not on profile platforms — likely background match, not the person
+                    online_summary = "Photo matched some websites online, but no personal profile was found. This person may be private."
+                else:
+                    # Not found anywhere online
+                    online_summary = "This appears to be a real photo, but we could not find this person online. They may be a private individual."
+            elif search_result["total_found"] > 3 and is_ai:
+                ai_result["score"] = min(100, ai_result["score"] + 15)
+                if ai_result["score"] >= 70:
+                    ai_result["status"] = "SCAM"
+                online_summary = f"AI-generated image found on {search_result['total_found']} sites."
+
+        detected_handle = ai_result.get("detected_handle")
+        detected_platform = ai_result.get("detected_platform")
+
+        # Groq person recognition fallback
+        ai_known_person = ai_result.get("known_person")
+        ai_known_type = ai_result.get("known_person_type")
+        if ai_known_person and not person_name:
+            person_name = ai_known_person
+            person_type = ai_known_type or ""
+
+        # Build impersonation warning from identified person
+        if person_name and not impersonation_warning and not ai_result.get("ai_generated"):
+            type_str = f" ({person_type})" if person_type else ""
+            impersonation_warning = (
+                f"This photo appears to be of {person_name}{type_str}, a real public figure. "
+                f"If someone sent you this photo claiming to be them, they may be impersonating this person."
+            )
+
+        # Handle visible IG handle in screenshot
+        if detected_handle and not impersonation_warning and not ai_result.get("ai_generated"):
+            impersonation_warning = (
+                f"This appears to be a screenshot from {detected_platform or 'social media'} "
+                f"showing {detected_handle}. If someone sent you this as their profile photo, verify their identity directly."
+            )
+
+        return jsonify({
+            "score": ai_result["score"],
+            "status": ai_result["status"],
+            "reason": ai_result["reason"],
+            "findings": ai_result.get("findings", []),
+            "ai_generated": ai_result.get("ai_generated", False),
+            "looks_like_stock": ai_result.get("looks_like_stock", False),
+            "found_online": search_result["found_online"] if search_result else None,
+            "total_found": search_result["total_found"] if search_result else None,
+            "sites": search_result["sites"] if search_result else [],
+            "social_platforms": social_platforms,
+            "impersonation_warning": impersonation_warning,
+            "online_summary": online_summary,
+            "search_ran": search_ran,
+            "detected_handle": detected_handle,
+            "detected_platform": detected_platform,
+            "person_name": person_name or ai_known_person,
+            "person_type": person_type or ai_known_type,
+        })
+
+    except Exception as e:
+        return jsonify({"error": f"Profile check failed: {str(e)}"}), 500
 
 
 # ── Main Route: Analyze input ────────────────────────────
@@ -225,11 +586,12 @@ def analyze():
     # Image analysis
     if "image" in data:
         try:
-            ai_result = analyze_image_with_ai(data["image"], data.get("mime_type", "image/jpeg"))
+            ai_result = analyze_image_with_ai(data["image"], data.get("mime_type", "image/jpeg"), data.get("lang", "en"))
             return jsonify({
                 "score": ai_result["score"],
                 "status": ai_result["status"],
                 "reason": ai_result["reason"],
+                "findings": ai_result.get("findings", []),
                 "url_scanned": None,
                 "url_flagged": None,
                 "ip_scanned": None,
@@ -245,6 +607,7 @@ def analyze():
         return jsonify({"error": "Please provide text to analyze."}), 400
 
     text = data["text"].strip()
+    lang = data.get("lang", "en")
 
     if len(text) < 3:
         return jsonify({"error": "Input is too short to analyze."}), 400
@@ -254,7 +617,7 @@ def analyze():
 
     try:
         # Step 1: AI analysis
-        ai_result = analyze_with_ai(text)
+        ai_result = analyze_with_ai(text, lang)
 
         # Step 2: URL scan
         url_result = None
@@ -295,13 +658,15 @@ def analyze():
             "score": ai_result["score"],
             "status": ai_result["status"],
             "reason": ai_result["reason"],
+            "findings": ai_result.get("findings", []),
             "url_scanned": detected_url,
             "url_flagged": url_result["flagged"] if url_result else None,
             "ip_scanned": detected_ip,
             "ip_flagged": ip_result["flagged"] if ip_result else None,
             "phone_scanned": detected_phone,
             "phone_info": phone_result["info"] if phone_result else None,
-            "phone_valid": phone_result["valid"] if phone_result else None
+            "phone_valid": phone_result["valid"] if phone_result else None,
+            "semak_mule_url": phone_result.get("semak_mule_url") if phone_result else None
         })
 
     except Exception as e:

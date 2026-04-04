@@ -8,16 +8,25 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
+import { useLang } from "../context/LanguageContext";
+import { useTheme } from "../context/ThemeContext";
+import { translations } from "../utils/translations";
 
 const BACKEND_URL = "http://192.168.0.14:5000";
 
 export default function QRScreen() {
+  const { lang } = useLang();
+  const t = translations[lang] || translations.en;
+  const { theme } = useTheme();
+
   const [permission, requestPermission] = useCameraPermissions();
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  const styles = makeStyles(theme);
 
   const handleBarCodeScanned = async ({ data }) => {
     if (scanned) return;
@@ -54,9 +63,9 @@ export default function QRScreen() {
   };
 
   const getStatusColor = (status) => {
-    if (status === "SAFE") return "#22c55e";
-    if (status === "SUSPICIOUS") return "#f59e0b";
-    return "#ef4444";
+    if (status === "SAFE") return theme.safe;
+    if (status === "SUSPICIOUS") return theme.warning;
+    return theme.danger;
   };
 
   if (!permission) return <View style={styles.container} />;
@@ -66,10 +75,10 @@ export default function QRScreen() {
       <SafeAreaView style={styles.container}>
         <View style={styles.centered}>
           <Text style={styles.permIcon}>📷</Text>
-          <Text style={styles.permTitle}>Camera Permission Required</Text>
-          <Text style={styles.permSubtitle}>Allow camera access to scan QR codes</Text>
+          <Text style={styles.permTitle}>{t.cameraPermRequired}</Text>
+          <Text style={styles.permSubtitle}>{t.allowCameraAccess}</Text>
           <TouchableOpacity style={styles.permButton} onPress={requestPermission}>
-            <Text style={styles.permButtonText}>Grant Permission</Text>
+            <Text style={styles.permButtonText}>{t.grantPermission}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -79,8 +88,8 @@ export default function QRScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>QR Code Scanner</Text>
-        <Text style={styles.subtitle}>Scan a QR code to check if the link is safe</Text>
+        <Text style={styles.title}>{t.qrCodeScanner}</Text>
+        <Text style={styles.subtitle}>{t.qrSubtitle}</Text>
       </View>
 
       {scanning ? (
@@ -95,7 +104,7 @@ export default function QRScreen() {
             <View style={styles.scanFrame} />
           </View>
           <TouchableOpacity style={styles.cancelButton} onPress={() => setScanning(false)}>
-            <Text style={styles.cancelText}>Cancel</Text>
+            <Text style={styles.cancelText}>{t.cancelScan}</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -103,17 +112,17 @@ export default function QRScreen() {
           {!result && !loading && !error && (
             <View style={styles.centered}>
               <Text style={styles.qrIcon}>⬛</Text>
-              <Text style={styles.instructionText}>Tap the button below to scan a QR code</Text>
+              <Text style={styles.instructionText}>{t.tapToScan}</Text>
               <TouchableOpacity style={styles.scanButton} onPress={() => { setScanning(true); setScanned(false); }}>
-                <Text style={styles.scanButtonText}>📷 Start Scanning</Text>
+                <Text style={styles.scanButtonText}>{t.startScanning}</Text>
               </TouchableOpacity>
             </View>
           )}
 
           {loading && (
             <View style={styles.centered}>
-              <ActivityIndicator size="large" color="#6366f1" />
-              <Text style={styles.loadingText}>Analyzing QR code...</Text>
+              <ActivityIndicator size="large" color={theme.accent} />
+              <Text style={styles.loadingText}>{t.analyzingQR}</Text>
             </View>
           )}
 
@@ -123,7 +132,7 @@ export default function QRScreen() {
                 <Text style={styles.errorText}>{error}</Text>
               </View>
               <TouchableOpacity style={styles.scanButton} onPress={reset}>
-                <Text style={styles.scanButtonText}>Try Again</Text>
+                <Text style={styles.scanButtonText}>{t.tryAgain}</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -135,16 +144,16 @@ export default function QRScreen() {
                   {result.status === "SAFE" ? "✅ SAFE" : result.status === "SUSPICIOUS" ? "⚠️ SUSPICIOUS" : "🚨 SCAM DETECTED"}
                 </Text>
               </View>
-              <Text style={styles.scoreText}>Risk Score: {result.score}/100</Text>
+              <Text style={styles.scoreText}>{t.riskScoreLabel} {result.score}/100</Text>
               <View style={styles.scoreBarBg}>
                 <View style={[styles.scoreBarFill, { width: `${result.score}%`, backgroundColor: getStatusColor(result.status) }]} />
               </View>
-              <Text style={styles.urlLabel}>QR Code URL</Text>
+              <Text style={styles.urlLabel}>{t.qrCodeUrl}</Text>
               <Text style={styles.urlText} numberOfLines={3}>{result.url}</Text>
-              <Text style={styles.reasonLabel}>What we found</Text>
+              <Text style={styles.reasonLabel}>{t.whatWeFound}</Text>
               <Text style={styles.reasonText}>{result.reason}</Text>
               <TouchableOpacity style={styles.scanButton} onPress={reset}>
-                <Text style={styles.scanButtonText}>Scan Another</Text>
+                <Text style={styles.scanButtonText}>{t.scanAnother}</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -154,11 +163,11 @@ export default function QRScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0f0f0f" },
+const makeStyles = (theme) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: theme.background },
   header: { padding: 20, paddingBottom: 10 },
-  title: { fontSize: 24, fontWeight: "bold", color: "#fff", marginTop: 10 },
-  subtitle: { fontSize: 14, color: "#888", marginTop: 4 },
+  title: { fontSize: 24, fontWeight: "bold", color: theme.text, marginTop: 10 },
+  subtitle: { fontSize: 14, color: theme.subtext, marginTop: 4 },
   cameraBox: { flex: 1, position: "relative" },
   camera: { flex: 1 },
   overlay: {
@@ -171,27 +180,27 @@ const styles = StyleSheet.create({
     width: 220,
     height: 220,
     borderWidth: 2,
-    borderColor: "#6366f1",
+    borderColor: theme.accent,
     borderRadius: 12,
   },
   cancelButton: {
     position: "absolute",
     bottom: 40,
     alignSelf: "center",
-    backgroundColor: "#1a1a1a",
+    backgroundColor: theme.surface,
     paddingVertical: 12,
     paddingHorizontal: 30,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#2a2a2a",
+    borderColor: theme.border,
   },
-  cancelText: { color: "#fff", fontSize: 15 },
+  cancelText: { color: theme.text, fontSize: 15 },
   content: { flex: 1, padding: 20 },
   centered: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16 },
   qrIcon: { fontSize: 64, marginBottom: 8 },
-  instructionText: { color: "#888", fontSize: 14, textAlign: "center" },
+  instructionText: { color: theme.subtext, fontSize: 14, textAlign: "center" },
   scanButton: {
-    backgroundColor: "#6366f1",
+    backgroundColor: theme.accent,
     paddingVertical: 14,
     paddingHorizontal: 32,
     borderRadius: 12,
@@ -199,16 +208,16 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   scanButtonText: { color: "#fff", fontWeight: "bold", fontSize: 15 },
-  loadingText: { color: "#aaa", marginTop: 12 },
+  loadingText: { color: theme.subtext, marginTop: 12 },
   errorBox: {
-    backgroundColor: "#ef444422",
-    borderColor: "#ef4444",
+    backgroundColor: theme.danger + "22",
+    borderColor: theme.danger,
     borderWidth: 1,
     borderRadius: 12,
     padding: 16,
     width: "100%",
   },
-  errorText: { color: "#ef4444", fontSize: 14 },
+  errorText: { color: theme.danger, fontSize: 14 },
   resultContainer: { paddingTop: 10 },
   statusBadge: {
     alignSelf: "flex-start",
@@ -219,24 +228,24 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   statusText: { fontWeight: "bold", fontSize: 16 },
-  scoreText: { color: "#aaa", fontSize: 13, marginBottom: 8 },
+  scoreText: { color: theme.subtext, fontSize: 13, marginBottom: 8 },
   scoreBarBg: {
-    backgroundColor: "#2a2a2a",
+    backgroundColor: theme.border,
     borderRadius: 999,
     height: 10,
     marginBottom: 20,
     overflow: "hidden",
   },
   scoreBarFill: { height: "100%", borderRadius: 999 },
-  urlLabel: { color: "#888", fontSize: 12, marginBottom: 4 },
-  urlText: { color: "#6366f1", fontSize: 13, marginBottom: 16 },
-  reasonLabel: { color: "#888", fontSize: 12, marginBottom: 6 },
-  reasonText: { color: "#fff", fontSize: 14, lineHeight: 22, marginBottom: 20 },
+  urlLabel: { color: theme.subtext, fontSize: 12, marginBottom: 4 },
+  urlText: { color: theme.accent, fontSize: 13, marginBottom: 16 },
+  reasonLabel: { color: theme.subtext, fontSize: 12, marginBottom: 6 },
+  reasonText: { color: theme.text, fontSize: 14, lineHeight: 22, marginBottom: 20 },
   permIcon: { fontSize: 48, marginBottom: 12 },
-  permTitle: { fontSize: 18, fontWeight: "bold", color: "#fff", marginBottom: 8 },
-  permSubtitle: { fontSize: 14, color: "#888", marginBottom: 24, textAlign: "center" },
+  permTitle: { fontSize: 18, fontWeight: "bold", color: theme.text, marginBottom: 8 },
+  permSubtitle: { fontSize: 14, color: theme.subtext, marginBottom: 24, textAlign: "center" },
   permButton: {
-    backgroundColor: "#6366f1",
+    backgroundColor: theme.accent,
     paddingVertical: 14,
     paddingHorizontal: 32,
     borderRadius: 12,
