@@ -792,98 +792,44 @@ def check_profile():
         return jsonify({"error": "Please provide an image."}), 400
 
     try:
-        # Step 1: Gemini vision analysis
         lang = data.get("lang", "en")
         ai_result = analyze_profile_photo(data["image"], lang)
 
-        # Step 2: Reverse image search
-        search_result = reverse_image_search(data["image"])
-
-        # Step 3: Reject non-person images
+        # Reject non-person images
         if ai_result.get("status") == "INVALID":
             return jsonify({"error": "No person detected in this image. Please upload a photo that contains a real person (face, body, or action shot)."}), 400
 
-        # Step 4: Adjust score based on detected flags
-        not_on_profile_platform = not search_result or not search_result.get("found_on_social")
-
+        # Adjust score based on AI vision flags
         if ai_result.get("ai_generated"):
             ai_result["score"] = min(100, ai_result["score"] + 15)
             if ai_result["score"] >= 70:
                 ai_result["status"] = "SCAM"
         elif ai_result.get("looks_like_stock"):
-            if not_on_profile_platform:
-                # Looks like stock BUT not found on social media profile platforms
-                # Could just be a professional/gym photo — cap at SUSPICIOUS, not SCAM
-                ai_result["score"] = min(60, ai_result["score"])
-                ai_result["status"] = "SUSPICIOUS"
-            else:
-                ai_result["score"] = min(100, ai_result["score"] + 10)
-                if ai_result["score"] >= 70:
-                    ai_result["status"] = "SCAM"
+            ai_result["score"] = min(60, ai_result["score"])
+            ai_result["status"] = "SUSPICIOUS"
         else:
-            # No suspicious flags — reduce score, likely a real photo
             ai_result["score"] = max(0, ai_result["score"] - 20)
             if ai_result["score"] < 31:
                 ai_result["status"] = "SAFE"
 
-        # Step 5: Process reverse image search results
         impersonation_warning = None
-        online_summary = None
-        social_platforms = []
-        person_name = None
-        person_type = None
-        search_ran = search_result is not None
-
-        if search_result:
-            social_platforms = search_result.get("social_platforms", [])
-            person_name = search_result.get("person_name")
-            person_type = search_result.get("person_type", "")
-            is_ai = ai_result.get("ai_generated", False)
-
-            if not is_ai:
-                if person_name:
-                    # Google identified a known public figure — high impersonation risk
-                    type_str = f" ({person_type})" if person_type else ""
-                    impersonation_warning = (
-                        f"This photo is of {person_name}{type_str}, a known public figure. "
-                        f"If someone sent you this photo claiming to be them, they are likely impersonating this person."
-                    )
-                    online_summary = "Identified as a known public figure."
-                    # Boost score — using a celebrity photo is a strong scam signal
-                    ai_result["score"] = min(100, ai_result["score"] + 30)
-                    if ai_result["score"] >= 50:
-                        ai_result["status"] = "SCAM"
-                else:
-                    # Person not identified — cannot determine impersonation from image alone
-                    online_summary = "This person could not be identified online. They appear to be a private individual."
-                    ai_result["score"] = max(0, ai_result["score"] - 10)
-                    if ai_result["score"] < 31:
-                        ai_result["status"] = "SAFE"
-            elif search_result["total_found"] > 3 and is_ai:
-                ai_result["score"] = min(100, ai_result["score"] + 15)
-                if ai_result["score"] >= 70:
-                    ai_result["status"] = "SCAM"
-                online_summary = f"AI-generated image found on {search_result['total_found']} sites."
-
+        person_name = ai_result.get("known_person")
+        person_type = ai_result.get("known_person_type", "")
         detected_handle = ai_result.get("detected_handle")
         detected_platform = ai_result.get("detected_platform")
 
-        # Groq person recognition fallback
-        ai_known_person = ai_result.get("known_person")
-        ai_known_type = ai_result.get("known_person_type")
-        if ai_known_person and not person_name:
-            person_name = ai_known_person
-            person_type = ai_known_type or ""
-
-        # Build impersonation warning from identified person
-        if person_name and not impersonation_warning and not ai_result.get("ai_generated"):
+        # Public figure detected by Groq vision
+        if person_name and not ai_result.get("ai_generated"):
             type_str = f" ({person_type})" if person_type else ""
             impersonation_warning = (
-                f"This photo appears to be of {person_name}{type_str}, a real public figure. "
+                f"This photo appears to be of {person_name}{type_str}, a known public figure. "
                 f"If someone sent you this photo claiming to be them, they may be impersonating this person."
             )
+            ai_result["score"] = min(100, ai_result["score"] + 30)
+            if ai_result["score"] >= 50:
+                ai_result["status"] = "SCAM"
 
-        # Handle visible IG handle in screenshot
+        # Visible social media handle in screenshot
         if detected_handle and not impersonation_warning and not ai_result.get("ai_generated"):
             impersonation_warning = (
                 f"This appears to be a screenshot from {detected_platform or 'social media'} "
@@ -897,17 +843,11 @@ def check_profile():
             "findings": ai_result.get("findings", []),
             "ai_generated": ai_result.get("ai_generated", False),
             "looks_like_stock": ai_result.get("looks_like_stock", False),
-            "found_online": search_result["found_online"] if search_result else None,
-            "total_found": search_result["total_found"] if search_result else None,
-            "sites": search_result["sites"] if search_result else [],
-            "social_platforms": social_platforms,
             "impersonation_warning": impersonation_warning,
-            "online_summary": online_summary,
-            "search_ran": search_ran,
             "detected_handle": detected_handle,
             "detected_platform": detected_platform,
-            "person_name": person_name or ai_known_person,
-            "person_type": person_type or ai_known_type,
+            "person_name": person_name,
+            "person_type": person_type,
         })
 
     except Exception as e:
