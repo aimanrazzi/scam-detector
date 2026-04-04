@@ -391,8 +391,8 @@ def extract_ip(text):
 
 # ── Helper: Extract phone number ──────────────────────────
 def extract_phone(text):
-    # Match international (+1..., +44...) and local formats (01x, 03x...)
-    pattern = r'(\+?\d[\d\s\-\(\)]{6,18}\d)'
+    # Must start with 0 (local MY) or + (international) — bank accounts don't
+    pattern = r'(\+[\d\s\-\(\)]{7,18}|0[\d\s\-\(\)]{7,13})'
     matches = re.findall(pattern, text)
     for match in matches:
         digits = re.sub(r'\D', '', match)
@@ -401,11 +401,19 @@ def extract_phone(text):
     return None
 
 # ── Helper: Extract bank account number ───────────────────
+BANK_KEYWORDS = {"bank", "akaun", "account", "acc", "maybank", "cimb", "rhb",
+                 "public bank", "hong leong", "ambank", "bsn", "affin", "alliance",
+                 "ocbc", "hsbc", "standard chartered", "uob", "shopee", "touch n go"}
+
 def extract_bank_account(text):
-    # Bank accounts: 10-16 digit standalone numbers
-    matches = re.findall(r'\b(\d{10,16})\b', text)
+    text_lower = text.lower()
+    has_bank_keyword = any(k in text_lower for k in BANK_KEYWORDS)
+    # Match 10-16 digit standalone numbers not starting with 0 or +
+    matches = re.findall(r'\b([1-9]\d{9,15})\b', text)
     for m in matches:
-        return m
+        # If text has bank keywords OR number is clearly too long for a phone (>12 digits)
+        if has_bank_keyword or len(m) > 12:
+            return m
     return None
 
 # ── Helper: Extract email ─────────────────────────────────
@@ -960,10 +968,9 @@ def analyze():
             if detected_phone:
                 phone_result = check_phone_numverify(detected_phone)
                 semak_result = check_semak_mule(detected_phone)
-            if not detected_phone:
-                detected_bank = extract_bank_account(text)
-                if detected_bank:
-                    bank_semak = check_semak_mule_bank(detected_bank)
+            detected_bank = extract_bank_account(text)
+            if detected_bank:
+                bank_semak = check_semak_mule_bank(detected_bank)
             detected_email = extract_email(text)
             if detected_email:
                 email_semak = check_semak_mule_email(detected_email)
