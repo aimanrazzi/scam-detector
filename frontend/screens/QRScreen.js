@@ -11,10 +11,9 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { useLang } from "../context/LanguageContext";
 import { useTheme } from "../context/ThemeContext";
 import { translations } from "../utils/translations";
+import { BACKEND_URL } from "../config";
 
-const BACKEND_URL = "http://192.168.0.14:5000";
-
-export default function QRScreen() {
+export default function QRScreen({ embedded = false }) {
   const { lang } = useLang();
   const t = translations[lang] || translations.en;
   const { theme } = useTheme();
@@ -70,9 +69,11 @@ export default function QRScreen() {
 
   if (!permission) return <View style={styles.container} />;
 
+  const Wrap = embedded ? View : SafeAreaView;
+
   if (!permission.granted) {
     return (
-      <SafeAreaView style={styles.container}>
+      <Wrap style={styles.container}>
         <View style={styles.centered}>
           <Text style={styles.permIcon}>📷</Text>
           <Text style={styles.permTitle}>{t.cameraPermRequired}</Text>
@@ -81,12 +82,12 @@ export default function QRScreen() {
             <Text style={styles.permButtonText}>{t.grantPermission}</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </Wrap>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <Wrap style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>{t.qrCodeScanner}</Text>
         <Text style={styles.subtitle}>{t.qrSubtitle}</Text>
@@ -159,7 +160,7 @@ export default function QRScreen() {
           )}
         </View>
       )}
-    </SafeAreaView>
+    </Wrap>
   );
 }
 
