@@ -957,10 +957,8 @@ def analyze():
         phone_result = None
         semak_result = None
         detected_phone = None
-        detected_bank = None
         detected_email = None
         detected_social = None
-        bank_semak = None
         email_semak = None
         social_result = None
         if not detected_url and not detected_ip:
@@ -968,9 +966,6 @@ def analyze():
             if detected_phone:
                 phone_result = check_phone_numverify(detected_phone)
                 semak_result = check_semak_mule(detected_phone)
-            detected_bank = extract_bank_account(text)
-            if detected_bank:
-                bank_semak = check_semak_mule_bank(detected_bank)
             detected_email = extract_email(text)
             if detected_email:
                 email_semak = check_semak_mule_email(detected_email)
@@ -1037,8 +1032,6 @@ def analyze():
 
         if detected_phone:
             _apply_semak_boost(semak_result, "This phone number")
-        if detected_bank:
-            _apply_semak_boost(bank_semak, "This bank account")
         if detected_email:
             _apply_semak_boost(email_semak, "This email address")
 
@@ -1084,9 +1077,6 @@ def analyze():
             "phone_international": phone_result.get("international_format") if phone_result else None,
             "semak_mule_reports": semak_result["reports"] if semak_result else None,
             "semak_mule_found": semak_result["found"] if semak_result else None,
-            "bank_scanned": detected_bank,
-            "bank_semak_found": bank_semak["found"] if bank_semak else None,
-            "bank_semak_reports": bank_semak["reports"] if bank_semak else None,
             "email_scanned": detected_email,
             "email_semak_found": email_semak["found"] if email_semak else None,
             "email_semak_reports": email_semak["reports"] if email_semak else None,

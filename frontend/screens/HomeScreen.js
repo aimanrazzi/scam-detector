@@ -422,26 +422,6 @@ export default function HomeScreen({ embedded = false }) {
                 </View>
               )}
 
-              {/* Bank account result */}
-              {result.bank_scanned && (
-                <View style={[styles.detailBox, { marginTop: 10 }]}>
-                  <Text style={styles.detailLabel}>🏦 Bank Account Checked</Text>
-                  <Text style={styles.detailValue}>{result.bank_scanned}</Text>
-                  {result.bank_semak_found != null && (
-                    <View style={[styles.semakMuleResult, {
-                      backgroundColor: result.bank_semak_found ? theme.danger + "22" : theme.safe + "22",
-                      borderColor: result.bank_semak_found ? theme.danger : theme.safe,
-                    }]}>
-                      <Text style={{ fontSize: 16 }}>{result.bank_semak_found ? "🚨" : "✅"}</Text>
-                      <Text style={[styles.semakMuleResultText, { color: result.bank_semak_found ? theme.danger : theme.safe }]}>
-                        {result.bank_semak_found
-                          ? `${result.bank_semak_reports} scam report(s) on PDRM Semak Mule`
-                          : "No reports on PDRM Semak Mule"}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              )}
 
               {/* Social media result */}
               {result.social_handle && (
