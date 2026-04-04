@@ -980,7 +980,7 @@ def analyze():
         if detected_url:
             dataset_label = check_url_in_dataset(detected_url)
             if dataset_label:
-                boost = {"phishing": 40, "malware": 45, "defacement": 25}.get(dataset_label, 30)
+                boost = {"phishing": 50, "malware": 55, "defacement": 40}.get(dataset_label, 35)
                 ai_result["score"] = min(100, ai_result["score"] + boost)
                 ai_result["findings"] = ai_result.get("findings", []) + [
                     f"URL matched a known {dataset_label} entry in our threat database."
