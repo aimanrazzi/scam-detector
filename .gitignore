@@ -15,6 +15,11 @@ build/
 venv/
 .venv/
 
+# Firebase credentials - never commit these
+google-services.json
+GoogleService-Info.plist
+firebase.js
+
 # Node / React Native
 node_modules/
 .expo/
