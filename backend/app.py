@@ -239,15 +239,15 @@ def check_semak_mule(phone):
             },
             timeout=8,
         )
+        print(f"[SemakMule] status={req.status_code} phone={local} body={req.text[:200]}")
         if req.status_code == 200:
             data = req.json()
             if data.get("status") == 1 and data.get("table_data"):
-                # table_data is [[phone, report_count], ...]
                 reports = data["table_data"][0][1] if data["table_data"] else 0
                 return {"reports": reports, "found": reports > 0, "local": local}
             return {"reports": 0, "found": False, "local": local}
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[SemakMule] failed: {e}")
     return None
 
 
