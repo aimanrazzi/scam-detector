@@ -315,18 +315,24 @@ MY_AREA_CODES = {
 
 def _local_my_lookup(digits):
     """Fallback: look up carrier/location from Malaysian prefix tables."""
+    # Normalise to local format (0xx...)
+    local = digits
+    if local.startswith('60') and len(local) > 10:
+        local = '0' + local[2:]
+    if not local.startswith('0'):
+        return {"valid": False}
     for prefix_len in (4, 3, 2):
-        prefix = digits[:prefix_len]
+        prefix = local[:prefix_len]
         if prefix in MY_PREFIXES:
             carrier, line_type = MY_PREFIXES[prefix]
             return {"valid": True, "country": "Malaysia", "country_code": "MY",
                     "carrier": carrier, "line_type": line_type, "location": "Malaysia",
-                    "international_format": "+60" + digits[1:]}
+                    "international_format": "+60" + local[1:]}
         if prefix in MY_AREA_CODES:
             location, line_type = MY_AREA_CODES[prefix]
             return {"valid": True, "country": "Malaysia", "country_code": "MY",
                     "carrier": "TM / Fixed Line", "line_type": line_type, "location": location,
-                    "international_format": "+60" + digits[1:]}
+                    "international_format": "+60" + local[1:]}
     return {"valid": False}
 
 def check_phone_numverify(phone):
@@ -978,7 +984,7 @@ def analyze():
             "ip_scanned": detected_ip,
             "ip_flagged": ip_result["flagged"] if ip_result else None,
             "phone_scanned": detected_phone,
-            "phone_info": phone_result["info"] if phone_result else None,
+            "phone_info": phone_result.get("info") if phone_result else None,
             "phone_valid": phone_result["valid"] if phone_result else None,
             "phone_country": phone_result.get("country") if phone_result else None,
             "phone_country_code": phone_result.get("country_code") if phone_result else None,
