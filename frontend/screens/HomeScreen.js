@@ -443,6 +443,36 @@ export default function HomeScreen({ embedded = false }) {
                 </View>
               )}
 
+              {/* Social media result */}
+              {result.social_handle && (
+                <View style={[styles.detailBox, { marginTop: 10 }]}>
+                  <Text style={styles.detailLabel}>
+                    {result.social_platform && result.social_platform !== "Unknown"
+                      ? `${result.social_platform} Account`
+                      : "Social Media Account"}
+                  </Text>
+                  <Text style={styles.detailValue}>@{result.social_handle}</Text>
+                  {result.social_found_reports != null && (
+                    <View style={[styles.semakMuleResult, {
+                      backgroundColor: result.social_found_reports ? theme.danger + "22" : theme.safe + "22",
+                      borderColor: result.social_found_reports ? theme.danger : theme.safe,
+                    }]}>
+                      <Text style={{ fontSize: 16 }}>{result.social_found_reports ? "🚨" : "✅"}</Text>
+                      <Text style={[styles.semakMuleResultText, {
+                        color: result.social_found_reports ? theme.danger : theme.safe,
+                      }]}>
+                        {result.social_found_reports
+                          ? `Found in ${result.social_report_count} scam-related result(s) online`
+                          : "No scam reports found online"}
+                      </Text>
+                    </View>
+                  )}
+                  {result.social_snippets && result.social_snippets.map((s, i) => (
+                    <Text key={i} style={[styles.detailLabel, { marginTop: 6, color: theme.danger }]} numberOfLines={2}>• {s}</Text>
+                  ))}
+                </View>
+              )}
+
               {/* Email result */}
               {result.email_scanned && (
                 <View style={[styles.detailBox, { marginTop: 10 }]}>

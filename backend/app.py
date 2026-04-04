@@ -413,6 +413,64 @@ def extract_email(text):
     match = re.search(r'[\w.+-]+@[\w-]+\.[a-zA-Z]{2,}', text)
     return match.group(0) if match else None
 
+# ── Helper: Extract social media handle ───────────────────
+SOCIAL_PLATFORMS = {
+    "instagram.com": "Instagram",
+    "tiktok.com": "TikTok",
+    "facebook.com": "Facebook",
+    "twitter.com": "Twitter/X",
+    "x.com": "Twitter/X",
+    "t.me": "Telegram",
+    "youtube.com": "YouTube",
+    "shopee.com.my": "Shopee",
+    "shopee.com": "Shopee",
+}
+
+def extract_social_handle(text):
+    """Returns (platform, handle) or None."""
+    # Match platform URLs: instagram.com/handle, tiktok.com/@handle
+    for domain, platform in SOCIAL_PLATFORMS.items():
+        pattern = rf'(?:https?://)?(?:www\.)?{re.escape(domain)}/(?:@?)([A-Za-z0-9_.]+)'
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return {"platform": platform, "handle": match.group(1), "domain": domain}
+    # Match bare @handle
+    match = re.search(r'(?<!\w)@([A-Za-z0-9_.]{3,30})(?!\w)', text)
+    if match:
+        return {"platform": "Unknown", "handle": match.group(1), "domain": None}
+    return None
+
+def check_social_handle(platform, handle):
+    """Search SerpAPI for scam reports about this handle."""
+    if not SERPAPI_KEY:
+        return None
+    try:
+        query = f'"{handle}" {platform} scam OR penipu OR fraud OR fake'
+        resp = requests.get("https://serpapi.com/search", params={
+            "engine": "google",
+            "q": query,
+            "num": 5,
+            "api_key": SERPAPI_KEY,
+        }, timeout=15)
+        if resp.status_code != 200:
+            return None
+        results = resp.json().get("organic_results", [])
+        scam_keywords = ["scam", "penipu", "fraud", "fake", "tipu", "report", "penipuan"]
+        hits = []
+        for r in results:
+            title = (r.get("title") or "").lower()
+            snippet = (r.get("snippet") or "").lower()
+            if any(k in title or k in snippet for k in scam_keywords):
+                hits.append(r.get("title", ""))
+        return {
+            "found_reports": len(hits) > 0,
+            "report_count": len(hits),
+            "snippets": hits[:3],
+        }
+    except Exception as e:
+        print(f"[SocialCheck] failed: {e}")
+        return None
+
 
 # ── Helper: Analyze image with Gemini Vision ─────────────
 def analyze_image_with_ai(image_base64, mime_type, lang="en"):
@@ -893,8 +951,10 @@ def analyze():
         detected_phone = None
         detected_bank = None
         detected_email = None
+        detected_social = None
         bank_semak = None
         email_semak = None
+        social_result = None
         if not detected_url and not detected_ip:
             detected_phone = extract_phone(text)
             if detected_phone:
@@ -907,6 +967,11 @@ def analyze():
             detected_email = extract_email(text)
             if detected_email:
                 email_semak = check_semak_mule_email(detected_email)
+            detected_social = extract_social_handle(text)
+            if detected_social:
+                social_result = check_social_handle(
+                    detected_social["platform"], detected_social["handle"]
+                )
 
         # Step 5: Dataset check for malicious URLs
         dataset_label = None
@@ -970,6 +1035,24 @@ def analyze():
         if detected_email:
             _apply_semak_boost(email_semak, "This email address")
 
+        # Social media handle check
+        if detected_social and social_result:
+            handle = detected_social["handle"]
+            platform = detected_social["platform"]
+            if social_result["found_reports"]:
+                count = social_result["report_count"]
+                boost = min(40, count * 15)
+                ai_result["score"] = min(100, ai_result["score"] + boost)
+                ai_result["findings"] = ai_result.get("findings", []) + [
+                    f"🚨 @{handle} ({platform}) found in {count} scam-related search result(s)."
+                ]
+                ai_result["findings"] += [f"  • {s}" for s in social_result["snippets"][:2]]
+                _update_status(ai_result)
+            else:
+                ai_result["findings"] = ai_result.get("findings", []) + [
+                    f"✅ @{handle} ({platform}) — no scam reports found online."
+                ]
+
         # Final status sync — always reflect the actual score
         _update_status(ai_result)
 
@@ -1000,6 +1083,11 @@ def analyze():
             "email_scanned": detected_email,
             "email_semak_found": email_semak["found"] if email_semak else None,
             "email_semak_reports": email_semak["reports"] if email_semak else None,
+            "social_handle": detected_social["handle"] if detected_social else None,
+            "social_platform": detected_social["platform"] if detected_social else None,
+            "social_found_reports": social_result["found_reports"] if social_result else None,
+            "social_report_count": social_result["report_count"] if social_result else None,
+            "social_snippets": social_result["snippets"] if social_result else None,
         })
 
     except Exception as e:
