@@ -818,16 +818,15 @@ def check_profile():
         detected_handle = ai_result.get("detected_handle")
         detected_platform = ai_result.get("detected_platform")
 
-        # Public figure detected by Groq vision
-        if person_name and not ai_result.get("ai_generated"):
+        # Public figure detected by Groq vision — always SCAM
+        if person_name:
             type_str = f" ({person_type})" if person_type else ""
             impersonation_warning = (
                 f"This photo appears to be of {person_name}{type_str}, a known public figure. "
                 f"If someone sent you this photo claiming to be them, they may be impersonating this person."
             )
-            ai_result["score"] = min(100, ai_result["score"] + 30)
-            if ai_result["score"] >= 50:
-                ai_result["status"] = "SCAM"
+            ai_result["score"] = 90
+            ai_result["status"] = "SCAM"
 
         # Visible social media handle in screenshot
         if detected_handle and not impersonation_warning and not ai_result.get("ai_generated"):
