@@ -257,42 +257,116 @@ def check_semak_mule_email(email):
     return _semak_mule_query("email", email.strip().lower())
 
 
-# ── Helper: Check phone number with NumVerify ─────────────
+# ── Helper: Malaysian phone number local lookup (no API needed) ──
+MY_PREFIXES = {
+    # Mobile
+    "0111": ("Celcom",   "mobile"), "0112": ("Celcom",   "mobile"),
+    "0113": ("Celcom",   "mobile"), "0114": ("Celcom",   "mobile"),
+    "0115": ("Celcom",   "mobile"), "0116": ("Celcom",   "mobile"),
+    "0117": ("Celcom",   "mobile"), "0118": ("Celcom",   "mobile"),
+    "0119": ("Celcom",   "mobile"),
+    "0120": ("Maxis",    "mobile"), "0121": ("Maxis",    "mobile"),
+    "0122": ("Maxis",    "mobile"), "0123": ("Maxis",    "mobile"),
+    "0124": ("Maxis",    "mobile"), "0125": ("Maxis",    "mobile"),
+    "0126": ("Maxis",    "mobile"), "0127": ("Maxis",    "mobile"),
+    "0128": ("Maxis",    "mobile"), "0129": ("Maxis",    "mobile"),
+    "0130": ("Maxis",    "mobile"), "0132": ("Maxis",    "mobile"),
+    "0133": ("Maxis",    "mobile"),
+    "0140": ("Celcom",   "mobile"), "0142": ("Celcom",   "mobile"),
+    "0143": ("Celcom",   "mobile"), "0144": ("Celcom",   "mobile"),
+    "0145": ("Celcom",   "mobile"), "0146": ("Celcom",   "mobile"),
+    "0147": ("Celcom",   "mobile"),
+    "0150": ("U Mobile", "mobile"), "0151": ("U Mobile", "mobile"),
+    "0152": ("U Mobile", "mobile"), "0153": ("U Mobile", "mobile"),
+    "0154": ("U Mobile", "mobile"), "0155": ("U Mobile", "mobile"),
+    "0156": ("U Mobile", "mobile"), "0158": ("U Mobile", "mobile"),
+    "0160": ("Maxis",    "mobile"), "0162": ("Maxis",    "mobile"),
+    "0163": ("Maxis",    "mobile"), "0164": ("Maxis",    "mobile"),
+    "0165": ("Maxis",    "mobile"), "0166": ("Maxis",    "mobile"),
+    "0167": ("Maxis",    "mobile"),
+    "0170": ("Celcom",   "mobile"), "0172": ("Celcom",   "mobile"),
+    "0173": ("Celcom",   "mobile"), "0174": ("Celcom",   "mobile"),
+    "0175": ("Celcom",   "mobile"), "0176": ("Celcom",   "mobile"),
+    "0177": ("Celcom",   "mobile"),
+    "0180": ("U Mobile", "mobile"), "0182": ("U Mobile", "mobile"),
+    "0183": ("U Mobile", "mobile"),
+    "0190": ("Digi",     "mobile"), "0192": ("Digi",     "mobile"),
+    "0193": ("Digi",     "mobile"), "0194": ("Digi",     "mobile"),
+    "0195": ("Digi",     "mobile"), "0196": ("Digi",     "mobile"),
+    "0197": ("Digi",     "mobile"),
+}
+
+MY_AREA_CODES = {
+    "03": ("Kuala Lumpur / Selangor", "landline"),
+    "04": ("Penang / Kedah / Perlis", "landline"),
+    "05": ("Perak / Kelantan",        "landline"),
+    "06": ("Negeri Sembilan / Melaka / Johor", "landline"),
+    "07": ("Johor",                   "landline"),
+    "082": ("Kuching, Sarawak",       "landline"),
+    "083": ("Sri Aman, Sarawak",      "landline"),
+    "084": ("Sibu, Sarawak",          "landline"),
+    "085": ("Miri, Sarawak",          "landline"),
+    "086": ("Kapit, Sarawak",         "landline"),
+    "087": ("Kota Kinabalu, Sabah",   "landline"),
+    "088": ("Kota Kinabalu, Sabah",   "landline"),
+    "089": ("Tawau, Sabah",           "landline"),
+    "09": ("Pahang / Terengganu / Kelantan", "landline"),
+}
+
+def _local_my_lookup(digits):
+    """Fallback: look up carrier/location from Malaysian prefix tables."""
+    for prefix_len in (4, 3, 2):
+        prefix = digits[:prefix_len]
+        if prefix in MY_PREFIXES:
+            carrier, line_type = MY_PREFIXES[prefix]
+            return {"valid": True, "country": "Malaysia", "country_code": "MY",
+                    "carrier": carrier, "line_type": line_type, "location": "Malaysia",
+                    "international_format": "+60" + digits[1:]}
+        if prefix in MY_AREA_CODES:
+            location, line_type = MY_AREA_CODES[prefix]
+            return {"valid": True, "country": "Malaysia", "country_code": "MY",
+                    "carrier": "TM / Fixed Line", "line_type": line_type, "location": location,
+                    "international_format": "+60" + digits[1:]}
+    return {"valid": False}
+
 def check_phone_numverify(phone):
     if not NUMVERIFY_API_KEY:
-        return None
+        return _local_my_lookup(re.sub(r'\D', '', phone))
 
-    response = requests.get(
-        "http://apilayer.net/api/validate",
-        params={
-            "access_key": NUMVERIFY_API_KEY,
-            "number": phone,
-            "format": 1
-        }
-    )
+    digits = re.sub(r'\D', '', phone)
 
-    if response.status_code != 200:
-        return None
+    # Build candidates to try: raw digits, with +, with +60 for MY locals
+    candidates = [digits]
+    if not phone.strip().startswith('+'):
+        candidates.append('+' + digits)
+    # If looks like Malaysian local (starts with 0), try +60 format
+    if digits.startswith('0') and 9 <= len(digits) <= 11:
+        candidates.append('+60' + digits[1:])
 
-    data = response.json()
+    for candidate in candidates:
+        try:
+            response = requests.get(
+                "http://apilayer.net/api/validate",
+                params={"access_key": NUMVERIFY_API_KEY, "number": candidate, "format": 1},
+                timeout=8,
+            )
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("valid"):
+                    return {
+                        "valid": True,
+                        "country": data.get("country_name", "Unknown"),
+                        "country_code": data.get("country_code", ""),
+                        "location": data.get("location") or data.get("country_name", ""),
+                        "carrier": data.get("carrier") or "Unknown",
+                        "line_type": data.get("line_type") or "Unknown",
+                        "international_format": data.get("international_format", candidate),
+                    }
+        except Exception:
+            pass
 
-    if not data.get("valid"):
-        return {"valid": False, "flagged": False, "info": "Invalid phone number"}
-
-    digits_only = re.sub(r'\D', '', phone)
-
-    return {
-        "valid": True,
-        "flagged": False,
-        "country": data.get("country_name", "Unknown"),
-        "country_code": data.get("country_code", ""),
-        "location": data.get("location", ""),
-        "carrier": data.get("carrier", "Unknown"),
-        "line_type": data.get("line_type", "Unknown"),
-        "international_format": data.get("international_format", phone),
-        "info": f"{data.get('country_name', '')} · {data.get('carrier', '')} · {data.get('line_type', '')}",
-        "semak_mule_url": f"https://semakmule.rmp.gov.my/?phone={digits_only}"
-    }
+    # Fallback to local prefix lookup for Malaysian numbers
+    return _local_my_lookup(digits)
 
 
 # ── Helper: Extract URL ───────────────────────────────────
@@ -311,11 +385,12 @@ def extract_ip(text):
 
 # ── Helper: Extract phone number ──────────────────────────
 def extract_phone(text):
-    pattern = r'(\+?6?0\d[\d\s\-]{7,12})'  # Malaysian format: 01x, 03x, +601x
+    # Match international (+1..., +44...) and local formats (01x, 03x...)
+    pattern = r'(\+?\d[\d\s\-\(\)]{6,18}\d)'
     matches = re.findall(pattern, text)
     for match in matches:
         digits = re.sub(r'\D', '', match)
-        if 9 <= len(digits) <= 12:
+        if 7 <= len(digits) <= 15:
             return match.strip()
     return None
 
