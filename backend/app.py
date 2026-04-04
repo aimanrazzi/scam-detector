@@ -5,6 +5,8 @@ import requests
 import os
 import re
 import json
+import csv
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -18,6 +20,65 @@ VIRUSTOTAL_API_KEY = os.getenv("VIRUSTOTAL_API_KEY")
 NUMVERIFY_API_KEY = os.getenv("NUMVERIFY_API_KEY")
 SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")
+
+# ── Malicious URL Dataset (Kaggle) ────────────────────────
+# Place malicious_phish.csv in the backend/ folder.
+# Dataset: https://www.kaggle.com/datasets/sid321axn/malicious-urls-dataset
+# Columns: url, type  (types: benign, defacement, phishing, malware)
+MALICIOUS_URL_DB = {}   # domain/url → label
+MALICIOUS_TYPES = {"phishing", "malware", "defacement"}
+
+def _load_malicious_dataset():
+    csv_path = os.path.join(os.path.dirname(__file__), "malicious_phish.csv")
+    if not os.path.exists(csv_path):
+        return
+    loaded = 0
+    try:
+        with open(csv_path, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                url = row.get("url", "").strip().lower()
+                label = row.get("type", "").strip().lower()
+                if url and label in MALICIOUS_TYPES:
+                    # Store by full URL and by domain for flexible matching
+                    MALICIOUS_URL_DB[url] = label
+                    try:
+                        domain = urlparse("http://" + url if not url.startswith("http") else url).netloc
+                        if domain and domain not in MALICIOUS_URL_DB:
+                            MALICIOUS_URL_DB[domain] = label
+                    except Exception:
+                        pass
+                loaded += 1
+        print(f"[Dataset] Loaded {len(MALICIOUS_URL_DB)} malicious URL/domain entries.")
+    except Exception as e:
+        print(f"[Dataset] Failed to load malicious_phish.csv: {e}")
+
+_load_malicious_dataset()
+
+
+def check_url_in_dataset(url):
+    """Check a URL against the loaded malicious URL dataset. Returns label or None."""
+    if not MALICIOUS_URL_DB:
+        return None
+    url_lower = url.lower().strip()
+    # Strip scheme for raw lookup
+    raw = re.sub(r'^https?://', '', url_lower).rstrip('/')
+    if raw in MALICIOUS_URL_DB:
+        return MALICIOUS_URL_DB[raw]
+    if url_lower in MALICIOUS_URL_DB:
+        return MALICIOUS_URL_DB[url_lower]
+    # Domain-only lookup
+    try:
+        domain = urlparse(url).netloc.lower()
+        if domain in MALICIOUS_URL_DB:
+            return MALICIOUS_URL_DB[domain]
+        # Strip www.
+        bare = domain.removeprefix("www.")
+        if bare in MALICIOUS_URL_DB:
+            return MALICIOUS_URL_DB[bare]
+    except Exception:
+        pass
+    return None
 
 LANG_NAMES = {
     "en": "English",
@@ -155,6 +216,41 @@ def check_ip_virustotal(ip):
     }
 
 
+# ── Helper: Check phone on Semak Mule (PDRM) ─────────────
+def check_semak_mule(phone):
+    """Returns {'reports': int, 'found': bool} or None on failure."""
+    digits_only = re.sub(r'\D', '', phone)
+    # Semak Mule expects local format (no +60 prefix)
+    local = digits_only
+    if local.startswith('60') and len(local) > 10:
+        local = '0' + local[2:]
+
+    url = "https://semakmule.rmp.gov.my/api/mule/get_search_data.php"
+    payload = json.dumps({"data": {"category": "telefon", "telNo": local}}).encode()
+    try:
+        req = requests.post(
+            url,
+            data=payload,
+            headers={
+                "User-Agent": "Mozilla/5.0",
+                "Content-Type": "application/json",
+                "apikey": "j3j389#nklala2",
+                "Referer": "https://semakmule.rmp.gov.my/",
+            },
+            timeout=8,
+        )
+        if req.status_code == 200:
+            data = req.json()
+            if data.get("status") == 1 and data.get("table_data"):
+                # table_data is [[phone, report_count], ...]
+                reports = data["table_data"][0][1] if data["table_data"] else 0
+                return {"reports": reports, "found": reports > 0, "local": local}
+            return {"reports": 0, "found": False, "local": local}
+    except Exception:
+        pass
+    return None
+
+
 # ── Helper: Check phone number with NumVerify ─────────────
 def check_phone_numverify(phone):
     if not NUMVERIFY_API_KEY:
@@ -183,8 +279,11 @@ def check_phone_numverify(phone):
         "valid": True,
         "flagged": False,
         "country": data.get("country_name", "Unknown"),
+        "country_code": data.get("country_code", ""),
+        "location": data.get("location", ""),
         "carrier": data.get("carrier", "Unknown"),
         "line_type": data.get("line_type", "Unknown"),
+        "international_format": data.get("international_format", phone),
         "info": f"{data.get('country_name', '')} · {data.get('carrier', '')} · {data.get('line_type', '')}",
         "semak_mule_url": f"https://semakmule.rmp.gov.my/?phone={digits_only}"
     }
@@ -283,6 +382,38 @@ def upload_to_imgbb(image_base64):
 
 
 # ── Helper: Reverse image search with SerpApi ────────────
+PROFILE_PLATFORMS = {
+    "Instagram": "instagram.com",
+    "Facebook": "facebook.com",
+    "Twitter/X": "twitter.com",
+    "TikTok": "tiktok.com",
+    "LinkedIn": "linkedin.com",
+}
+
+def _extract_platforms_from_sites(sites):
+    found = []
+    for site in sites:
+        for platform, domain in PROFILE_PLATFORMS.items():
+            if domain in site and platform not in found:
+                found.append(platform)
+    return found
+
+def _parse_knowledge_graph(kg):
+    """Extract person name, type, and social platforms from a SerpApi knowledge graph."""
+    person_name = kg.get("title") or kg.get("name")
+    person_type = kg.get("type") or kg.get("description", "")
+    social = []
+    for profile in kg.get("social_profiles", []):
+        name = profile.get("name", "")
+        link = profile.get("link", "")
+        if name and name not in social:
+            social.append(name)
+        # Also check the link URL
+        for platform, domain in PROFILE_PLATFORMS.items():
+            if domain in link and platform not in social:
+                social.append(platform)
+    return person_name, person_type, social
+
 def reverse_image_search(image_base64):
     if not SERPAPI_KEY:
         return None
@@ -292,8 +423,44 @@ def reverse_image_search(image_base64):
     if not image_url:
         return None
 
+    person_name = None
+    person_type = ""
+    found_platforms = []
+    total_found = 0
+
+    # ── Try Google Lens first (better at face/celebrity recognition) ──
     try:
-        response = requests.get(
+        lens_resp = requests.get(
+            "https://serpapi.com/search",
+            params={
+                "engine": "google_lens",
+                "url": image_url,
+                "api_key": SERPAPI_KEY,
+            },
+            timeout=20
+        )
+        if lens_resp.status_code == 200:
+            lens_data = lens_resp.json()
+
+            # Knowledge graph from Lens
+            kg = lens_data.get("knowledge_graph", {})
+            if kg:
+                person_name, person_type, kg_social = _parse_knowledge_graph(kg)
+                found_platforms.extend(p for p in kg_social if p not in found_platforms)
+
+            # Visual matches = near-exact image sources
+            visual_matches = lens_data.get("visual_matches", [])
+            total_found = len(visual_matches)
+            match_sites = [m.get("link", "") for m in visual_matches[:15]]
+            for p in _extract_platforms_from_sites(match_sites):
+                if p not in found_platforms:
+                    found_platforms.append(p)
+    except Exception:
+        pass
+
+    # ── Also run google_reverse_image for extra coverage ──
+    try:
+        rev_resp = requests.get(
             "https://serpapi.com/search",
             params={
                 "engine": "google_reverse_image",
@@ -302,39 +469,26 @@ def reverse_image_search(image_base64):
             },
             timeout=20
         )
+        if rev_resp.status_code == 200:
+            rev_data = rev_resp.json()
+
+            # Knowledge graph fallback
+            if not person_name:
+                kg = rev_data.get("knowledge_graph", {})
+                if kg:
+                    person_name, person_type, kg_social = _parse_knowledge_graph(kg)
+                    found_platforms.extend(p for p in kg_social if p not in found_platforms)
+
+            # image_results (near-exact matches)
+            image_results = rev_data.get("image_results", [])
+            if not total_found:
+                total_found = len(image_results)
+            rev_sites = [r.get("link", "") for r in image_results[:15]]
+            for p in _extract_platforms_from_sites(rev_sites):
+                if p not in found_platforms:
+                    found_platforms.append(p)
     except Exception:
-        return None
-
-    if response.status_code != 200:
-        return None
-
-    data = response.json()
-    # Only use image_results (near-exact matches), not inline_images (visually similar)
-    results = data.get("image_results", [])
-    total_found = len(results)
-    sites = [r.get("link", "") for r in results[:10]]
-
-    # Extract knowledge graph (identifies public figures by face)
-    kg = data.get("knowledge_graph", {})
-    person_name = kg.get("title") or kg.get("name")
-    person_type = kg.get("type") or kg.get("description", "")
-    person_social = []
-    for profile in kg.get("social_profiles", []):
-        person_social.append(profile.get("name", ""))
-
-    # Only profile-type platforms matter for impersonation detection
-    profile_platforms_map = {
-        "Instagram": "instagram.com",
-        "Facebook": "facebook.com",
-        "Twitter/X": "twitter.com",
-        "TikTok": "tiktok.com",
-        "LinkedIn": "linkedin.com",
-    }
-    found_platforms = list(person_social)
-    for site in sites:
-        for platform, domain in profile_platforms_map.items():
-            if domain in site and platform not in found_platforms:
-                found_platforms.append(platform)
+        pass
 
     return {
         "total_found": total_found,
@@ -635,24 +789,71 @@ def analyze():
 
         # Step 4: Phone check
         phone_result = None
+        semak_result = None
         detected_phone = None
         if not detected_url and not detected_ip:
             detected_phone = extract_phone(text)
             if detected_phone:
                 phone_result = check_phone_numverify(detected_phone)
+                semak_result = check_semak_mule(detected_phone)
 
-        # Step 5: Boost score if flagged
+        # Step 5: Dataset check for malicious URLs
+        dataset_label = None
+        if detected_url:
+            dataset_label = check_url_in_dataset(detected_url)
+            if dataset_label:
+                boost = {"phishing": 40, "malware": 45, "defacement": 25}.get(dataset_label, 30)
+                ai_result["score"] = min(100, ai_result["score"] + boost)
+                ai_result["findings"] = ai_result.get("findings", []) + [
+                    f"URL matched a known {dataset_label} entry in our threat database."
+                ]
+
+        # Step 6: Boost score if flagged by VirusTotal or dataset
+        def _update_status(result):
+            if result["score"] >= 70:
+                result["status"] = "SCAM"
+            elif result["score"] >= 31:
+                result["status"] = "SUSPICIOUS"
+
         if url_result and url_result["flagged"]:
             ai_result["score"] = min(100, ai_result["score"] + 20)
-            if ai_result["score"] >= 70:
-                ai_result["status"] = "SCAM"
             ai_result["reason"] += " URL was also flagged by VirusTotal."
+            _update_status(ai_result)
 
         if ip_result and ip_result["flagged"]:
             ai_result["score"] = min(100, ai_result["score"] + 20)
-            if ai_result["score"] >= 70:
-                ai_result["status"] = "SCAM"
             ai_result["reason"] += " IP address was flagged by VirusTotal."
+            _update_status(ai_result)
+
+        # Phone number baseline: AI can't judge a raw number, so start at 25 (uncertain)
+        if detected_phone:
+            if ai_result["score"] < 25:
+                ai_result["score"] = 25
+                ai_result["findings"] = ai_result.get("findings", []) + [
+                    "Phone number detected — cannot determine safety from number alone."
+                ]
+            _update_status(ai_result)
+
+        # Semak Mule reports boost score
+        if semak_result and semak_result["found"]:
+            reports = semak_result["reports"]
+            boost = min(60, reports * 20)  # +20 per report, capped at +60
+            ai_result["score"] = min(100, ai_result["score"] + boost)
+            ai_result["findings"] = ai_result.get("findings", []) + [
+                f"⚠️ This number has {reports} scam report(s) on Semak Mule (PDRM database)."
+            ]
+            _update_status(ai_result)
+        elif semak_result and not semak_result["found"]:
+            ai_result["findings"] = ai_result.get("findings", []) + [
+                "✅ No reports found on Semak Mule (PDRM database)."
+            ]
+
+        # Final status sync — always reflect the actual score
+        _update_status(ai_result)
+
+        # Build semak_mule_url from digits (works even if numverify failed)
+        digits_only = re.sub(r'\D', '', detected_phone) if detected_phone else ""
+        semak_url = f"https://semakmule.rmp.gov.my/?phone={digits_only}" if digits_only else None
 
         return jsonify({
             "score": ai_result["score"],
@@ -661,16 +862,40 @@ def analyze():
             "findings": ai_result.get("findings", []),
             "url_scanned": detected_url,
             "url_flagged": url_result["flagged"] if url_result else None,
+            "dataset_label": dataset_label,
             "ip_scanned": detected_ip,
             "ip_flagged": ip_result["flagged"] if ip_result else None,
             "phone_scanned": detected_phone,
             "phone_info": phone_result["info"] if phone_result else None,
             "phone_valid": phone_result["valid"] if phone_result else None,
-            "semak_mule_url": phone_result.get("semak_mule_url") if phone_result else None
+            "phone_country": phone_result.get("country") if phone_result else None,
+            "phone_country_code": phone_result.get("country_code") if phone_result else None,
+            "phone_location": phone_result.get("location") if phone_result else None,
+            "phone_carrier": phone_result.get("carrier") if phone_result else None,
+            "phone_line_type": phone_result.get("line_type") if phone_result else None,
+            "phone_international": phone_result.get("international_format") if phone_result else None,
+            "semak_mule_reports": semak_result["reports"] if semak_result else None,
+            "semak_mule_found": semak_result["found"] if semak_result else None,
+            "semak_mule_url": semak_url,
         })
 
     except Exception as e:
         return jsonify({"error": f"Analysis failed: {str(e)}"}), 500
+
+
+# ── Upload Image Route (for profile picture) ─────────────
+@app.route("/upload-image", methods=["POST"])
+def upload_image():
+    try:
+        image_b64 = request.form.get("image")
+        if not image_b64:
+            return jsonify({"error": "No image provided"}), 400
+        url = upload_to_imgbb(image_b64)
+        if url:
+            return jsonify({"url": url})
+        return jsonify({"error": "Upload failed"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # ── Health Check Route ───────────────────────────────────
