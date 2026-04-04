@@ -2,6 +2,8 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from groq import Groq
 import requests
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import os
 import re
 import json
@@ -228,7 +230,7 @@ def _semak_mule_query(category, value):
             "Content-Type": "application/json",
             "apikey": "j3j389#nklala2",
             "Referer": "https://semakmule.rmp.gov.my/",
-        }, timeout=10)
+        }, timeout=10, verify=False)
         print(f"[SemakMule] category={category} value={value} status={req.status_code} body={req.text[:200]}")
         if req.status_code == 200:
             data = req.json()
