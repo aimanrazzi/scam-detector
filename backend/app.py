@@ -614,10 +614,30 @@ def reverse_image_search(image_base64):
                 person_name, person_type, kg_social = _parse_knowledge_graph(kg)
                 found_platforms.extend(p for p in kg_social if p not in found_platforms)
 
-            # Visual matches = near-exact image sources
+            # related_searches fallback — e.g. "Aliff Aziz" shown as related search
+            if not person_name:
+                for item in lens_data.get("related_searches", []):
+                    query = item.get("query", "")
+                    # Person names are typically Title Case with 2+ words
+                    words = query.strip().split()
+                    if len(words) >= 2 and all(w[0].isupper() for w in words if w):
+                        person_name = query
+                        break
+                # Also check knowledge_graph in related_content
+                for item in lens_data.get("related_content", []):
+                    title = item.get("title", "")
+                    words = title.strip().split()
+                    if len(words) >= 2 and all(w[0].isupper() for w in words if w):
+                        person_name = title
+                        break
+
+            # Visual matches — only count social media sites, ignore retail/product pages
             visual_matches = lens_data.get("visual_matches", [])
-            total_found = len(visual_matches)
             match_sites = [m.get("link", "") for m in visual_matches[:15]]
+            social_match_sites = [s for s in match_sites if any(
+                domain in s for domain in PROFILE_PLATFORMS.values()
+            )]
+            total_found = len(social_match_sites)
             for p in _extract_platforms_from_sites(match_sites):
                 if p not in found_platforms:
                     found_platforms.append(p)
@@ -664,6 +684,7 @@ def reverse_image_search(image_base64):
         "found_on_social": len(found_platforms) > 0,
         "person_name": person_name,
         "person_type": person_type,
+        "is_public_figure": bool(person_name),
     }
 
 
@@ -821,25 +842,23 @@ def check_profile():
 
             if not is_ai:
                 if person_name:
-                    # Google identified person by face (knowledge graph)
+                    # Google identified a known public figure — high impersonation risk
                     type_str = f" ({person_type})" if person_type else ""
-                    platforms_str = f" on {', '.join(social_platforms)}" if social_platforms else ""
                     impersonation_warning = (
-                        f"This photo appears to be of {person_name}{type_str}{platforms_str}. "
-                        f"If someone sent you this photo claiming to be them, they may be impersonating this person."
+                        f"This photo is of {person_name}{type_str}, a known public figure. "
+                        f"If someone sent you this photo claiming to be them, they are likely impersonating this person."
                     )
-                    online_summary = f"Found on {search_result['total_found']} website(s) online."
-                elif search_result.get("found_on_social"):
-                    # Found on Instagram/Facebook/TikTok/LinkedIn/Twitter
-                    platforms_str = ", ".join(social_platforms)
-                    impersonation_warning = f"This photo was found on {platforms_str}. If someone sent you this photo, they may be impersonating the real person."
-                    online_summary = f"Found on {platforms_str}."
-                elif search_result["found_online"]:
-                    # Found online but not on profile platforms — likely background match, not the person
-                    online_summary = "Photo matched some websites online, but no personal profile was found. This person may be private."
+                    online_summary = "Identified as a known public figure."
+                    # Boost score — using a celebrity photo is a strong scam signal
+                    ai_result["score"] = min(100, ai_result["score"] + 30)
+                    if ai_result["score"] >= 50:
+                        ai_result["status"] = "SCAM"
                 else:
-                    # Not found anywhere online
-                    online_summary = "This appears to be a real photo, but we could not find this person online. They may be a private individual."
+                    # Person not identified — cannot determine impersonation from image alone
+                    online_summary = "This person could not be identified online. They appear to be a private individual."
+                    ai_result["score"] = max(0, ai_result["score"] - 10)
+                    if ai_result["score"] < 31:
+                        ai_result["status"] = "SAFE"
             elif search_result["total_found"] > 3 and is_ai:
                 ai_result["score"] = min(100, ai_result["score"] + 15)
                 if ai_result["score"] >= 70:
