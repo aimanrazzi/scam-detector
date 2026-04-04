@@ -267,47 +267,6 @@ export default function ProfileCheckScreen({ embedded = false }) {
               </View>
             )}
 
-            {/* Social media platforms */}
-            {result.social_platforms && result.social_platforms.length > 0 && (
-              <View style={styles.searchBox}>
-                <Text style={styles.sectionLabel}>{t.foundOnSocialMedia}</Text>
-                <View style={styles.platformsRow}>
-                  {result.social_platforms.map((platform, i) => (
-                    <View key={i} style={styles.platformBadge}>
-                      <Text style={styles.platformText}>{platform}</Text>
-                    </View>
-                  ))}
-                </View>
-                <Text style={styles.platformNote}>
-                  {t.realPersonNote}
-                </Text>
-              </View>
-            )}
-
-            {/* Online search summary */}
-            {result.search_ran && result.online_summary && (
-              <View style={styles.searchBox}>
-                <Text style={styles.sectionLabel}>{t.onlineSearch}</Text>
-                <Text style={[styles.foundText, {
-                  color: result.found_online && result.social_platforms?.length > 0
-                    ? theme.warning
-                    : theme.safe
-                }]}>
-                  {result.found_online && result.social_platforms?.length > 0 ? "⚠️" : "✅"} {result.online_summary}
-                </Text>
-              </View>
-            )}
-
-            {/* Search not available */}
-            {!result.search_ran && !result.ai_generated && (
-              <View style={styles.searchBox}>
-                <Text style={styles.sectionLabel}>{t.onlineSearch}</Text>
-                <Text style={[styles.foundText, { color: theme.subtext }]}>
-                  🔍 Online search not available — photo authenticity checked by AI only
-                </Text>
-              </View>
-            )}
-
             <TouchableOpacity style={styles.resetButton} onPress={reset}>
               <Text style={styles.resetButtonText}>{t.checkAnotherPhoto}</Text>
             </TouchableOpacity>
@@ -443,18 +402,6 @@ const makeStyles = (theme) => StyleSheet.create({
   },
   flagIcon: { fontSize: 22 },
   flagText: { fontSize: 12, fontWeight: "bold", textAlign: "center" },
-  searchBox: {
-    backgroundColor: theme.background,
-    borderRadius: 10,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: theme.border,
-    marginBottom: 16,
-  },
-  foundText: { fontSize: 14, fontWeight: "bold", marginBottom: 8 },
-  sitesList: { gap: 4 },
-  siteText: { color: theme.subtext, fontSize: 12 },
-  siteLink: { color: theme.accent, fontSize: 12, textDecorationLine: "underline", marginBottom: 4 },
   resetButton: {
     backgroundColor: theme.surface,
     borderWidth: 1,
@@ -505,29 +452,5 @@ const makeStyles = (theme) => StyleSheet.create({
     color: theme.text,
     fontSize: 13,
     lineHeight: 20,
-  },
-  platformsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 10,
-  },
-  platformBadge: {
-    backgroundColor: theme.accentBg,
-    borderWidth: 1,
-    borderColor: theme.accent,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  platformText: {
-    color: theme.accent,
-    fontSize: 12,
-    fontWeight: "bold",
-  },
-  platformNote: {
-    color: theme.subtext,
-    fontSize: 12,
-    lineHeight: 18,
   },
 });
