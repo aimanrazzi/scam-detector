@@ -1,4 +1,4 @@
-import React, { useState } from "react"; // eslint-disable-line
+import React, { useState, useRef, useEffect } from "react"; // eslint-disable-line
 import {
   StyleSheet,
   Text,
@@ -8,16 +8,18 @@ import {
   ScrollView,
   Image,
   Linking,
+  Animated,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import * as ImagePicker from "expo-image-picker";
 import { useLang } from "../context/LanguageContext";
 import { useTheme } from "../context/ThemeContext";
 import { translations } from "../utils/translations";
 
-const BACKEND_URL = "http://192.168.0.14:5000";
+import { BACKEND_URL } from "../config";
 
-export default function ProfileCheckScreen() {
+export default function ProfileCheckScreen({ embedded = false }) {
   const { lang } = useLang();
   const t = translations[lang] || translations.en;
   const { theme } = useTheme();
@@ -25,6 +27,19 @@ export default function ProfileCheckScreen() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const scoreAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (result) {
+      Animated.timing(scoreAnim, {
+        toValue: result.score,
+        duration: 800,
+        useNativeDriver: false,
+      }).start();
+    } else {
+      scoreAnim.setValue(0);
+    }
+  }, [result]);
 
   const styles = makeStyles(theme);
 
@@ -104,8 +119,10 @@ export default function ProfileCheckScreen() {
     return theme.danger;
   };
 
+  const Wrap = embedded ? View : SafeAreaView;
+
   return (
-    <SafeAreaView style={styles.container}>
+    <Wrap style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.title}>{t.profileTitle}</Text>
         <Text style={styles.subtitle}>{t.profileSubtitle}</Text>
@@ -124,10 +141,10 @@ export default function ProfileCheckScreen() {
             <Text style={styles.uploadText}>{t.profileSubtitle}</Text>
             <View style={styles.imageButtonRow}>
               <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
-                <Text style={styles.imageButtonText}>🖼️ {t.uploadPhoto}</Text>
+                <Text style={styles.imageButtonText} numberOfLines={1} adjustsFontSizeToFit>🖼️ {t.uploadPhoto}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.imageButton} onPress={takePhoto}>
-                <Text style={styles.imageButtonText}>📷 {t.takePhoto}</Text>
+                <Text style={styles.imageButtonText} numberOfLines={1} adjustsFontSizeToFit>📷 {t.takePhoto}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -136,15 +153,23 @@ export default function ProfileCheckScreen() {
         {/* Check button */}
         {image && !result && (
           <TouchableOpacity
-            style={[styles.checkButton, loading && styles.disabledButton]}
+            style={[styles.checkButtonWrap, loading && { opacity: 0.5 }]}
             onPress={checkProfile}
             disabled={loading}
+            activeOpacity={0.8}
           >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.checkButtonText}>{t.checkProfileBtn}</Text>
-            )}
+            <LinearGradient
+              colors={["#818cf8", "#6366f1", "#4f46e5"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.checkButton}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.checkButtonText} numberOfLines={1} adjustsFontSizeToFit>🔍 {t.checkProfileBtn}</Text>
+              )}
+            </LinearGradient>
           </TouchableOpacity>
         )}
 
@@ -158,16 +183,30 @@ export default function ProfileCheckScreen() {
         {/* Result */}
         {result && (
           <View style={styles.resultCard}>
-            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(result.status) + "22", borderColor: getStatusColor(result.status) }]}>
-              <Text style={[styles.statusText, { color: getStatusColor(result.status) }]}>
+            <LinearGradient
+              colors={
+                result.status === "SAFE"
+                  ? ["#16a34a", "#22c55e"]
+                  : result.status === "SUSPICIOUS"
+                  ? ["#b45309", "#f59e0b"]
+                  : ["#991b1b", "#ef4444"]
+              }
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.statusBanner}
+            >
+              <Text style={styles.statusBannerText}>
                 {result.status === "SAFE" ? `✅ ${t.looksGenuine}` : result.status === "SUSPICIOUS" ? `⚠️ ${t.suspicious}` : `🚨 ${t.likelyFake}`}
               </Text>
-            </View>
+            </LinearGradient>
 
-            {/* Score bar */}
-            <Text style={styles.scoreLabel}>{t.suspicionScore}: {result.score}/100</Text>
+            {/* Animated score bar */}
+            <Text style={styles.scoreLabel}>{t.suspicionScore}: <Text style={{ color: getStatusColor(result.status), fontWeight: "bold" }}>{result.score}/100</Text></Text>
             <View style={styles.scoreBarBg}>
-              <View style={[styles.scoreBarFill, { width: `${result.score}%`, backgroundColor: getStatusColor(result.status) }]} />
+              <Animated.View style={[styles.scoreBarFill, {
+                width: scoreAnim.interpolate({ inputRange: [0, 100], outputRange: ["0%", "100%"] }),
+                backgroundColor: getStatusColor(result.status),
+              }]} />
             </View>
 
             {/* Analysis */}
@@ -275,59 +314,79 @@ export default function ProfileCheckScreen() {
           </View>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </Wrap>
   );
 }
 
 const makeStyles = (theme) => StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.background },
-  scroll: { padding: 20, paddingBottom: 40 },
-  title: { fontSize: 24, fontWeight: "bold", color: theme.text, marginTop: 10, marginBottom: 6 },
-  subtitle: { fontSize: 14, color: theme.subtext, marginBottom: 20, lineHeight: 20 },
+  scroll: { padding: 20, paddingBottom: 110 },
+  title: { fontSize: 28, fontWeight: "900", color: theme.text, marginTop: 10, marginBottom: 6, letterSpacing: -0.5 },
+  subtitle: { fontSize: 14, color: theme.subtext, marginBottom: 20, lineHeight: 22 },
   uploadBox: {
     backgroundColor: theme.surface,
-    borderRadius: 14,
-    borderWidth: 1,
+    borderRadius: 20,
+    borderWidth: 1.5,
     borderColor: theme.border,
     borderStyle: "dashed",
-    padding: 30,
+    padding: 36,
     alignItems: "center",
     marginBottom: 16,
   },
-  uploadIcon: { fontSize: 48, marginBottom: 10 },
+  uploadIcon: { fontSize: 56, marginBottom: 12 },
   uploadText: { color: theme.subtext, fontSize: 14, marginBottom: 16, textAlign: "center" },
   imageButtonRow: { flexDirection: "row", gap: 10 },
   imageButton: {
     backgroundColor: theme.background,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 10,
-    paddingVertical: 10,
+    borderWidth: 1.5,
+    borderColor: theme.accent,
+    borderRadius: 12,
+    paddingVertical: 11,
     paddingHorizontal: 16,
   },
-  imageButtonText: { color: theme.subtext, fontSize: 13 },
+  imageButtonText: { color: theme.accent, fontSize: 13, fontWeight: "600" },
   imageBox: {
-    borderRadius: 14,
+    borderRadius: 20,
     overflow: "hidden",
     borderWidth: 1,
     borderColor: theme.border,
     marginBottom: 16,
     alignItems: "center",
     backgroundColor: theme.surface,
-    padding: 12,
+    padding: 16,
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
   },
   imagePreview: { width: 180, height: 180, borderRadius: 90 },
   removeBtn: { marginTop: 10, padding: 8 },
   removeBtnText: { color: theme.danger, fontSize: 13 },
-  checkButton: {
-    backgroundColor: theme.accent,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
+  checkButtonWrap: {
+    borderRadius: 14,
+    overflow: "hidden",
     marginBottom: 16,
+    elevation: 4,
+    shadowColor: "#6366f1",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
   },
-  disabledButton: { backgroundColor: theme.surfaceHigh },
-  checkButtonText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
+  checkButton: {
+    paddingVertical: 15,
+    borderRadius: 14,
+    alignItems: "center",
+  },
+  checkButtonText: { color: "#fff", fontWeight: "bold", fontSize: 16, letterSpacing: 0.5 },
+  statusBanner: {
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 16,
+    alignItems: "center",
+  },
+  statusBannerText: { color: "#fff", fontWeight: "bold", fontSize: 17 },
   errorBox: {
     backgroundColor: theme.danger + "22",
     borderColor: theme.danger,
@@ -338,8 +397,13 @@ const makeStyles = (theme) => StyleSheet.create({
   errorText: { color: theme.danger, fontSize: 14 },
   resultCard: {
     backgroundColor: theme.surface,
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 20,
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
     borderWidth: 1,
     borderColor: theme.border,
   },
@@ -354,9 +418,9 @@ const makeStyles = (theme) => StyleSheet.create({
   statusText: { fontWeight: "bold", fontSize: 16 },
   scoreLabel: { color: theme.subtext, fontSize: 13, marginBottom: 8 },
   scoreBarBg: {
-    backgroundColor: theme.surfaceHigh,
+    backgroundColor: theme.border,
     borderRadius: 999,
-    height: 10,
+    height: 12,
     marginBottom: 20,
     overflow: "hidden",
   },

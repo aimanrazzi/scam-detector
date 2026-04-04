@@ -109,7 +109,7 @@ const makeStyles = (theme) => StyleSheet.create({
   },
   scroll: {
     padding: 20,
-    paddingBottom: 40,
+    paddingBottom: 110,
   },
   title: {
     fontSize: 24,

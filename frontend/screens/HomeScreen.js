@@ -1,4 +1,4 @@
-import React, { useState } from "react"; // eslint-disable-line
+import React, { useState, useRef, useEffect } from "react"; // eslint-disable-line
 import {
   StyleSheet,
   Text,
@@ -11,8 +11,10 @@ import {
   Image,
   Share,
   Linking,
+  Animated,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import * as ImagePicker from "expo-image-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLang } from "../context/LanguageContext";
@@ -20,9 +22,9 @@ import { useTheme } from "../context/ThemeContext";
 import { translations } from "../utils/translations";
 import LanguageSelector from "../components/LanguageSelector";
 
-const BACKEND_URL = "http://192.168.0.14:5000"; // Your PC's local IP
+import { BACKEND_URL } from "../config";
 
-export default function HomeScreen() {
+export default function HomeScreen({ embedded = false }) {
   const { lang } = useLang();
   const t = translations[lang] || translations.en;
   const { theme } = useTheme();
@@ -30,7 +32,22 @@ export default function HomeScreen() {
   const [image, setImage] = useState(null);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [slowLoad, setSlowLoad] = useState(false);
   const [error, setError] = useState(null);
+  const scoreAnim = useRef(new Animated.Value(0)).current;
+  const slowTimer = useRef(null);
+
+  useEffect(() => {
+    if (result) {
+      Animated.timing(scoreAnim, {
+        toValue: result.score,
+        duration: 800,
+        useNativeDriver: false,
+      }).start();
+    } else {
+      scoreAnim.setValue(0);
+    }
+  }, [result]);
 
   const styles = makeStyles(theme);
 
@@ -75,29 +92,31 @@ export default function HomeScreen() {
     if (!inputText.trim() && !image) return;
 
     setLoading(true);
+    setSlowLoad(false);
     setResult(null);
     setError(null);
 
+    // Show "waking up server" hint after 6 seconds
+    slowTimer.current = setTimeout(() => setSlowLoad(true), 6000);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+
     try {
       let body;
-      let headers;
+      const headers = { "Content-Type": "application/json" };
 
       if (image) {
-        body = JSON.stringify({
-          image: image.base64,
-          mime_type: image.mimeType || "image/jpeg",
-          lang,
-        });
-        headers = { "Content-Type": "application/json" };
+        body = JSON.stringify({ image: image.base64, mime_type: image.mimeType || "image/jpeg", lang });
       } else {
         body = JSON.stringify({ text: inputText.trim(), lang });
-        headers = { "Content-Type": "application/json" };
       }
 
       const response = await fetch(`${BACKEND_URL}/analyze`, {
         method: "POST",
         headers,
         body,
+        signal: controller.signal,
       });
 
       const data = await response.json();
@@ -106,7 +125,6 @@ export default function HomeScreen() {
         setError(data.error);
       } else {
         setResult(data);
-        // Save to history
         const entry = {
           input: image ? "[Screenshot]" : inputText.trim(),
           status: data.status,
@@ -117,21 +135,21 @@ export default function HomeScreen() {
         const stored = await AsyncStorage.getItem("scan_history");
         const history = stored ? JSON.parse(stored) : [];
         history.push(entry);
-        if (history.length > 50) history.shift(); // keep last 50
+        if (history.length > 50) history.shift();
         await AsyncStorage.setItem("scan_history", JSON.stringify(history));
       }
     } catch (err) {
-      setError("Could not connect to server. Make sure the backend is running.");
+      if (err.name === "AbortError") {
+        setError("Request timed out. The server may be starting up — please try again.");
+      } else {
+        setError("Could not connect to server. Check your internet connection.");
+      }
     } finally {
+      clearTimeout(timeout);
+      clearTimeout(slowTimer.current);
       setLoading(false);
+      setSlowLoad(false);
     }
-  };
-
-  const getStatusColor = (status) => {
-    if (status === "SAFE") return theme.safe;
-    if (status === "SUSPICIOUS") return theme.warning;
-    if (status === "SCAM") return theme.danger;
-    return theme.text;
   };
 
   const getScoreBarColor = (score) => {
@@ -156,33 +174,38 @@ export default function HomeScreen() {
 
   const canAnalyze = (inputText.trim() || image) && !loading;
 
+  const Wrap = embedded ? View : SafeAreaView;
+
   return (
-    <SafeAreaView style={styles.container}>
+    <Wrap style={styles.container}>
         <StatusBar barStyle={theme.isDark ? "light-content" : "dark-content"} backgroundColor={theme.background} />
-        {/* Language selector — fixed at top, outside scroll */}
-        <LanguageSelector />
+        {!embedded && <LanguageSelector />}
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
 
           {/* Header */}
-          <View style={styles.header}>
+          <LinearGradient
+            colors={theme.isDark ? ["#1e1b4b", "#0f0f0f"] : ["#ede9fe", "#f5f5f5"]}
+            style={styles.header}
+          >
             <Text style={styles.headerIcon}>🛡️</Text>
             <Text style={styles.title}>{t.title}</Text>
             <Text style={styles.subtitle}>{t.subtitle}</Text>
-          </View>
+          </LinearGradient>
 
-          {/* Image preview */}
-          {image && (
-            <View style={styles.imagePreviewBox}>
-              <Image source={{ uri: image.uri }} style={styles.imagePreview} resizeMode="cover" />
-              <TouchableOpacity style={styles.removeImage} onPress={() => setImage(null)}>
-                <Text style={styles.removeImageText}>✕ {t.removeImage}</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+          {/* Input Card */}
+          <View style={styles.inputCard}>
+            {/* Image preview */}
+            {image && (
+              <View style={styles.imagePreviewBox}>
+                <Image source={{ uri: image.uri }} style={styles.imagePreview} resizeMode="cover" />
+                <TouchableOpacity style={styles.removeImage} onPress={() => setImage(null)}>
+                  <Text style={styles.removeImageText}>✕ {t.removeImage}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
-          {/* Text Input — hidden if image selected */}
-          {!image && (
-            <View style={styles.inputContainer}>
+            {/* Text Input */}
+            {!image && (
               <TextInput
                 style={styles.input}
                 placeholder={t.placeholder}
@@ -191,33 +214,45 @@ export default function HomeScreen() {
                 value={inputText}
                 onChangeText={setInputText}
               />
-            </View>
-          )}
+            )}
 
-          {/* Image buttons */}
-          {!image && (
-            <View style={styles.imageButtonRow}>
-              <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
-                <Text style={styles.imageButtonText}>🖼️ {t.uploadScreenshot}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.imageButton} onPress={takePhoto}>
-                <Text style={styles.imageButtonText}>📷 {t.takePhoto}</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+            {/* Divider */}
+            {!image && <View style={styles.divider} />}
+
+            {/* Image buttons */}
+            {!image && (
+              <View style={styles.imageButtonRow}>
+                <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
+                  <Text style={styles.imageButtonText} numberOfLines={1} adjustsFontSizeToFit>🖼️ {t.uploadScreenshot}</Text>
+                </TouchableOpacity>
+                <View style={{ width: 1, backgroundColor: theme.border }} />
+                <TouchableOpacity style={styles.imageButton} onPress={takePhoto}>
+                  <Text style={styles.imageButtonText} numberOfLines={1} adjustsFontSizeToFit>📷 {t.takePhoto}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>{/* end inputCard */}
 
           {/* Analyze / Clear buttons */}
           <View style={styles.buttonRow}>
             <TouchableOpacity
-              style={[styles.analyzeButton, !canAnalyze && styles.disabledButton]}
+              style={[styles.analyzeButtonWrap, !canAnalyze && { opacity: 0.45 }]}
               onPress={analyze}
               disabled={!canAnalyze}
+              activeOpacity={0.8}
             >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.analyzeButtonText}>{t.checkNow}</Text>
-              )}
+              <LinearGradient
+                colors={["#818cf8", "#6366f1", "#4f46e5"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.analyzeButton}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.analyzeButtonText}>🔍 {t.checkNow}</Text>
+                )}
+              </LinearGradient>
             </TouchableOpacity>
 
             {(result || error || image) && (
@@ -226,6 +261,15 @@ export default function HomeScreen() {
               </TouchableOpacity>
             )}
           </View>
+
+          {slowLoad && (
+            <View style={styles.slowBox}>
+              <ActivityIndicator size="small" color={theme.accent} style={{ marginRight: 8 }} />
+              <Text style={[styles.slowText, { color: theme.subtext }]}>
+                ⏳ Waking up server, please wait…
+              </Text>
+            </View>
+          )}
 
           {/* Error */}
           {error && (
@@ -237,30 +281,41 @@ export default function HomeScreen() {
           {/* Result */}
           {result && (
             <View style={styles.resultCard}>
-              {/* Status Badge */}
-              <View style={styles.statusRow}>
-                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(result.status) + "22", borderColor: getStatusColor(result.status) }]}>
-                  <Text style={[styles.statusText, { color: getStatusColor(result.status) }]}>
-                    {result.status === "SAFE" ? `✅ ${t.safe}` : result.status === "SUSPICIOUS" ? `⚠️ ${t.suspicious}` : `🚨 ${t.scamDetected}`}
-                  </Text>
-                </View>
-                <TouchableOpacity style={styles.shareButton} onPress={shareResult}>
+              {/* Gradient status banner */}
+              <LinearGradient
+                colors={
+                  result.status === "SAFE"
+                    ? ["#16a34a", "#22c55e"]
+                    : result.status === "SUSPICIOUS"
+                    ? ["#b45309", "#f59e0b"]
+                    : ["#991b1b", "#ef4444"]
+                }
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.statusBanner}
+              >
+                <Text style={styles.statusBannerText}>
+                  {result.status === "SAFE" ? `✅ ${t.safe}` : result.status === "SUSPICIOUS" ? `⚠️ ${t.suspicious}` : `🚨 ${t.scamDetected}`}
+                </Text>
+                <TouchableOpacity onPress={shareResult}>
                   <Text style={styles.shareButtonText}>⬆ {t.shareResult}</Text>
                 </TouchableOpacity>
-              </View>
+              </LinearGradient>
 
-              {/* Score */}
-              <Text style={styles.scoreLabel}>{t.riskScore}: {result.score}/100</Text>
-              <View style={styles.scoreBarBg}>
-                <View
-                  style={[
-                    styles.scoreBarFill,
-                    {
-                      width: `${result.score}%`,
-                      backgroundColor: getScoreBarColor(result.score),
-                    },
-                  ]}
-                />
+              {/* Animated score bar */}
+              <View style={styles.scoreSection}>
+                <Text style={styles.scoreLabel}>{t.riskScore}: <Text style={{ color: getScoreBarColor(result.score), fontWeight: "bold" }}>{result.score}/100</Text></Text>
+                <View style={styles.scoreBarBg}>
+                  <Animated.View
+                    style={[
+                      styles.scoreBarFill,
+                      {
+                        width: scoreAnim.interpolate({ inputRange: [0, 100], outputRange: ["0%", "100%"] }),
+                        backgroundColor: getScoreBarColor(result.score),
+                      },
+                    ]}
+                  />
+                </View>
               </View>
 
               {/* Reason */}
@@ -286,6 +341,11 @@ export default function HomeScreen() {
                   <Text style={[styles.detailStatus, { color: result.url_flagged ? theme.danger : theme.safe }]}>
                     {result.url_flagged ? `🚨 ${t.flaggedVT}` : `✅ ${t.safeVT}`}
                   </Text>
+                  {result.dataset_label && (
+                    <Text style={[styles.detailStatus, { color: theme.danger }]}>
+                      🗄️ {`Matched ${result.dataset_label} in threat database`}
+                    </Text>
+                  )}
                 </View>
               )}
 
@@ -304,10 +364,67 @@ export default function HomeScreen() {
               {result.phone_scanned && (
                 <View style={[styles.detailBox, { marginTop: 10 }]}>
                   <Text style={styles.detailLabel}>{t.phoneChecked}</Text>
-                  <Text style={styles.detailValue}>{result.phone_scanned}</Text>
-                  <Text style={[styles.detailStatus, { color: result.phone_valid ? theme.safe : theme.danger }]}>
-                    {result.phone_valid ? `✅ ${result.phone_info}` : `❌ ${t.invalidPhone}`}
+                  <Text style={styles.detailValue}>
+                    {result.phone_international || result.phone_scanned}
                   </Text>
+
+                  {result.phone_valid ? (
+                    <View style={styles.phoneDetailGrid}>
+                      {result.phone_country ? (
+                        <View style={styles.phoneDetailRow}>
+                          <Text style={styles.phoneDetailIcon}>🌍</Text>
+                          <Text style={styles.phoneDetailKey}>{t.phoneCountry || "Country"}</Text>
+                          <Text style={styles.phoneDetailVal}>
+                            {result.phone_country}{result.phone_country_code ? ` (${result.phone_country_code})` : ""}
+                          </Text>
+                        </View>
+                      ) : null}
+                      {result.phone_location ? (
+                        <View style={styles.phoneDetailRow}>
+                          <Text style={styles.phoneDetailIcon}>📍</Text>
+                          <Text style={styles.phoneDetailKey}>{t.phoneRegion || "Region"}</Text>
+                          <Text style={styles.phoneDetailVal}>{result.phone_location}</Text>
+                        </View>
+                      ) : null}
+                      {result.phone_carrier ? (
+                        <View style={styles.phoneDetailRow}>
+                          <Text style={styles.phoneDetailIcon}>📡</Text>
+                          <Text style={styles.phoneDetailKey}>{t.phoneCarrier || "Carrier"}</Text>
+                          <Text style={styles.phoneDetailVal}>{result.phone_carrier}</Text>
+                        </View>
+                      ) : null}
+                      {result.phone_line_type ? (
+                        <View style={styles.phoneDetailRow}>
+                          <Text style={styles.phoneDetailIcon}>📱</Text>
+                          <Text style={styles.phoneDetailKey}>{t.phoneType || "Type"}</Text>
+                          <Text style={[styles.phoneDetailVal, { textTransform: "capitalize" }]}>{result.phone_line_type}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  ) : (
+                    <Text style={[styles.detailStatus, { color: theme.danger }]}>
+                      ❌ {t.invalidPhone}
+                    </Text>
+                  )}
+
+                  {result.semak_mule_found != null && (
+                    <View style={[
+                      styles.semakMuleResult,
+                      { backgroundColor: result.semak_mule_found ? theme.danger + "22" : theme.safe + "22",
+                        borderColor: result.semak_mule_found ? theme.danger : theme.safe }
+                    ]}>
+                      <Text style={{ fontSize: 16 }}>
+                        {result.semak_mule_found ? "🚨" : "✅"}
+                      </Text>
+                      <Text style={[styles.semakMuleResultText, {
+                        color: result.semak_mule_found ? theme.danger : theme.safe
+                      }]}>
+                        {result.semak_mule_found
+                          ? `${result.semak_mule_reports} scam report(s) on Semak Mule`
+                          : "No reports on Semak Mule"}
+                      </Text>
+                    </View>
+                  )}
                   {result.semak_mule_url && (
                     <TouchableOpacity
                       style={styles.semakMuleButton}
@@ -321,7 +438,7 @@ export default function HomeScreen() {
             </View>
           )}
         </ScrollView>
-    </SafeAreaView>
+    </Wrap>
   );
 }
 
@@ -332,46 +449,62 @@ const makeStyles = (theme) => StyleSheet.create({
   },
   scroll: {
     padding: 20,
-    paddingBottom: 40,
+    paddingBottom: 110,
   },
   header: {
     alignItems: "center",
-    marginBottom: 30,
-    marginTop: 20,
+    paddingTop: 28,
+    paddingBottom: 28,
+    paddingHorizontal: 20,
+    marginHorizontal: -20,
+    marginBottom: 20,
   },
   headerIcon: {
-    fontSize: 48,
+    fontSize: 56,
     marginBottom: 10,
   },
   title: {
-    fontSize: 28,
-    fontWeight: "bold",
+    fontSize: 30,
+    fontWeight: "900",
     color: theme.text,
     marginBottom: 6,
+    letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: theme.subtext,
     textAlign: "center",
     lineHeight: 20,
+    paddingHorizontal: 10,
   },
-  imagePreviewBox: {
-    marginBottom: 16,
-    borderRadius: 12,
-    overflow: "hidden",
+  inputCard: {
+    backgroundColor: theme.surface,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: theme.border,
+    marginBottom: 14,
+    overflow: "hidden",
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: theme.border,
+    marginHorizontal: 0,
+  },
+  imagePreviewBox: {
     alignItems: "center",
-    backgroundColor: theme.surface,
-    padding: 12,
+    padding: 16,
   },
   imagePreview: {
     width: 160,
     height: 160,
-    borderRadius: 8,
+    borderRadius: 12,
   },
   removeImage: {
-    backgroundColor: theme.surface,
     padding: 10,
     alignItems: "center",
   },
@@ -379,15 +512,9 @@ const makeStyles = (theme) => StyleSheet.create({
     color: theme.danger,
     fontSize: 13,
   },
-  inputContainer: {
-    marginBottom: 12,
-  },
   input: {
-    backgroundColor: theme.surface,
-    borderColor: theme.border,
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: "transparent",
+    padding: 18,
     color: theme.text,
     fontSize: 15,
     minHeight: 130,
@@ -395,59 +522,75 @@ const makeStyles = (theme) => StyleSheet.create({
   },
   imageButtonRow: {
     flexDirection: "row",
-    gap: 10,
-    marginBottom: 12,
   },
   imageButton: {
     flex: 1,
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 12,
-    paddingVertical: 12,
+    paddingVertical: 14,
     alignItems: "center",
+    borderTopWidth: 0,
   },
   imageButtonText: {
-    color: theme.subtext,
+    color: theme.accent,
     fontSize: 13,
+    fontWeight: "600",
   },
   buttonRow: {
     flexDirection: "row",
     gap: 10,
     marginBottom: 20,
   },
-  analyzeButton: {
+  analyzeButtonWrap: {
     flex: 1,
-    backgroundColor: theme.accent,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
+    borderRadius: 14,
+    overflow: "hidden",
+    elevation: 4,
+    shadowColor: "#6366f1",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
   },
-  disabledButton: {
-    backgroundColor: theme.surfaceHigh,
+  analyzeButton: {
+    paddingVertical: 15,
+    alignItems: "center",
+    borderRadius: 14,
   },
   analyzeButtonText: {
     color: "#fff",
     fontWeight: "bold",
     fontSize: 16,
+    letterSpacing: 0.5,
   },
-  statusRow: {
+  slowBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 4,
+    marginBottom: 12,
+  },
+  slowText: {
+    fontSize: 13,
+    flex: 1,
+  },
+  statusBanner: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     marginBottom: 16,
   },
-  shareButton: {
-    backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+  statusBannerText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 16,
   },
   shareButtonText: {
-    color: theme.subtext,
+    color: "rgba(255,255,255,0.85)",
     fontSize: 13,
+    fontWeight: "600",
+  },
+  scoreSection: {
+    marginBottom: 16,
   },
   resetButton: {
     backgroundColor: theme.surface,
@@ -475,10 +618,15 @@ const makeStyles = (theme) => StyleSheet.create({
   },
   resultCard: {
     backgroundColor: theme.surface,
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 20,
     borderWidth: 1,
     borderColor: theme.border,
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
   },
   statusBadge: {
     alignSelf: "flex-start",
@@ -497,9 +645,9 @@ const makeStyles = (theme) => StyleSheet.create({
     marginBottom: 8,
   },
   scoreBarBg: {
-    backgroundColor: theme.surfaceHigh,
+    backgroundColor: theme.border,
     borderRadius: 999,
-    height: 10,
+    height: 12,
     marginBottom: 20,
     overflow: "hidden",
   },
@@ -558,8 +706,52 @@ const makeStyles = (theme) => StyleSheet.create({
     fontSize: 13,
     fontWeight: "bold",
   },
-  semakMuleButton: {
+  phoneDetailGrid: {
     marginTop: 10,
+    gap: 6,
+  },
+  phoneDetailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    backgroundColor: theme.background,
+    borderRadius: 6,
+  },
+  phoneDetailIcon: {
+    fontSize: 14,
+    width: 22,
+  },
+  phoneDetailKey: {
+    color: theme.subtext,
+    fontSize: 12,
+    fontWeight: "600",
+    width: 60,
+  },
+  phoneDetailVal: {
+    color: theme.text,
+    fontSize: 13,
+    fontWeight: "500",
+    flex: 1,
+  },
+  semakMuleResult: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 10,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  semakMuleResultText: {
+    fontSize: 13,
+    fontWeight: "700",
+    flex: 1,
+  },
+  semakMuleButton: {
+    marginTop: 8,
     backgroundColor: theme.surface,
     borderWidth: 1,
     borderColor: theme.accent,

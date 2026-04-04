@@ -126,7 +126,7 @@ export default function TipsScreen() {
 
 const makeStyles = (theme) => StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.background },
-  scroll: { padding: 20, paddingBottom: 40 },
+  scroll: { padding: 20, paddingBottom: 110 },
   title: { fontSize: 24, fontWeight: "bold", color: theme.text, marginTop: 10, marginBottom: 6 },
   subtitle: { fontSize: 14, color: theme.subtext, marginBottom: 20, lineHeight: 20 },
   card: {
