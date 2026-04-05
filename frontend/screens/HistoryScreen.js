@@ -21,14 +21,14 @@ export default function HistoryScreen() {
   const [dateFilter, setDateFilter] = useState("ALL"); // ALL, TODAY, WEEK
   const styles = makeStyles(theme);
 
-  useFocusEffect(useCallback(() => { loadHistory(); }, []));
+  useFocusEffect(useCallback(() => { loadHistory(); }, [loadHistory]));
 
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async () => {
     try {
       const stored = await AsyncStorage.getItem("scan_history");
-      if (stored) setHistory(JSON.parse(stored));
+      setHistory(stored ? JSON.parse(stored) : []);
     } catch {}
-  };
+  }, []);
 
   const clearHistory = () => {
     Alert.alert(t.clearHistory, t.clearHistoryConfirm, [
