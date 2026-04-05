@@ -129,7 +129,7 @@ export default function HomeScreen({ embedded = false }) {
           status: data.status,
           score: data.score,
           reason: data.reason,
-          date: new Date().toLocaleString("en-MY"),
+          date: new Date().toISOString(),
         };
         const stored = await AsyncStorage.getItem("scan_history");
         const history = stored ? JSON.parse(stored) : [];

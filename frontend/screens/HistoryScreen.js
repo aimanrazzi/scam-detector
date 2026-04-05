@@ -163,7 +163,7 @@ export default function HistoryScreen() {
               </View>
               <Text style={styles.inputText} numberOfLines={2}>{item.input}</Text>
               <Text style={styles.reason} numberOfLines={2}>{item.reason}</Text>
-              <Text style={styles.date}>{item.date}</Text>
+              <Text style={styles.date}>{new Date(item.date).toLocaleString("en-MY")}</Text>
             </View>
           ))
         )}
