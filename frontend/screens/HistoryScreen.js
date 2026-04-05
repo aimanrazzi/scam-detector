@@ -72,7 +72,6 @@ export default function HistoryScreen() {
 
     try {
       if (item.localImagePath) {
-        // Share image + text together in one action
         await RNShare.open({
           url: item.localImagePath,
           message: text,
@@ -81,12 +80,11 @@ export default function HistoryScreen() {
         });
         return;
       }
-      await Share.share({ message: text });
     } catch (e) {
-      if (e?.message !== "User did not share") {
-        await Share.share({ message: text });
-      }
+      // RNShare not available (Expo Go) or user cancelled — fall back to text
+      if (e?.message === "User did not share") return;
     }
+    await Share.share({ message: text });
   };
 
   const getStatusColor = (status) => {
