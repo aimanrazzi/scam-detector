@@ -23,7 +23,7 @@ import { translations } from "../utils/translations";
 import LanguageSelector from "../components/LanguageSelector";
 import { useAuth } from "../context/AuthContext";
 import { db } from "../firebase";
-import { collection, addDoc, doc, getDoc, setDoc, increment } from "firebase/firestore";
+import { collection, addDoc, doc, getDoc, setDoc, increment, arrayUnion } from "firebase/firestore";
 
 import { BACKEND_URL } from "../config";
 
@@ -130,30 +130,12 @@ export default function HomeScreen({ embedded = false }) {
         const reportSnap = await getDoc(doc(db, "reports", localCacheKey));
         if (reportSnap.exists()) {
           communityReportCount = reportSnap.data().count || 0;
+          const reportedBy = reportSnap.data().reportedBy || [];
+          if (user && reportedBy.includes(user.uid)) {
+            setReportedByUser(true);
+          }
         }
       } catch {}
-
-      // 3+ reports → instant SCAM, skip API
-      if (communityReportCount >= 3) {
-        const scamResult = {
-          status: "SCAM",
-          score: 95,
-          reason: `This has been reported as a scam by ${communityReportCount} users.`,
-          findings: [`Flagged by ${communityReportCount} community reports.`, "Treat with extreme caution."],
-          reportCount: communityReportCount,
-        };
-        setResult(scamResult);
-        setLoading(false);
-        await saveToHistory({
-          input: inputText.trim(),
-          status: scamResult.status,
-          score: scamResult.score,
-          reason: scamResult.reason,
-          date: new Date().toISOString(),
-          localImagePath: null,
-        });
-        return;
-      }
     }
 
     // Show "waking up server" hint after 6 seconds
@@ -226,11 +208,19 @@ export default function HomeScreen({ embedded = false }) {
   };
 
   const reportAsScam = async () => {
-    if (!cacheKey) return;
+    if (!cacheKey || !user) {
+      Alert.alert("Sign in required", "Please sign in to report a scam.");
+      return;
+    }
+    if (reportedByUser) {
+      Alert.alert("Already reported", "You have already reported this.");
+      return;
+    }
     try {
       await setDoc(doc(db, "reports", cacheKey), {
         input: inputText.trim(),
         count: increment(1),
+        reportedBy: arrayUnion(user.uid),
         lastReportedAt: new Date().toISOString(),
       }, { merge: true });
       setReportedByUser(true);
@@ -396,10 +386,16 @@ export default function HomeScreen({ embedded = false }) {
 
               {/* Community reports warning */}
               {result.reportCount > 0 && (
-                <View style={[styles.semakMuleResult, { backgroundColor: theme.danger + "22", borderColor: theme.danger, marginBottom: 12 }]}>
-                  <Text style={{ fontSize: 16 }}>🚨</Text>
-                  <Text style={[styles.semakMuleResultText, { color: theme.danger }]}>
-                    {result.reportCount} user{result.reportCount !== 1 ? "s" : ""} reported this as a scam
+                <View style={[styles.semakMuleResult, {
+                  backgroundColor: result.reportCount >= 5 ? theme.danger + "33" : theme.warning + "22",
+                  borderColor: result.reportCount >= 5 ? theme.danger : theme.warning,
+                  marginBottom: 12,
+                }]}>
+                  <Text style={{ fontSize: 16 }}>{result.reportCount >= 5 ? "🚨" : "⚠️"}</Text>
+                  <Text style={[styles.semakMuleResultText, { color: result.reportCount >= 5 ? theme.danger : theme.warning }]}>
+                    {result.reportCount >= 5
+                      ? `${result.reportCount} users flagged this as a scam — high risk`
+                      : `${result.reportCount} user${result.reportCount !== 1 ? "s" : ""} reported this as suspicious`}
                   </Text>
                 </View>
               )}
