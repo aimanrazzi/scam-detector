@@ -23,7 +23,6 @@ import LanguageSelector from "../components/LanguageSelector";
 import { useAuth } from "../context/AuthContext";
 import { db } from "../firebase";
 import { collection, addDoc } from "firebase/firestore";
-import * as FileSystem from "expo-file-system";
 
 import { BACKEND_URL } from "../config";
 
@@ -138,15 +137,9 @@ export default function HomeScreen({ embedded = false }) {
           localImagePath: null,
         };
 
-        // Save image to local file system if scan used a screenshot
-        if (image?.base64) {
-          try {
-            const path = FileSystem.documentDirectory + `scan_${Date.now()}.jpg`;
-            await FileSystem.writeAsStringAsync(path, image.base64, { encoding: "base64" });
-            entry.localImagePath = path;
-          } catch (e) {
-            console.warn("Image save failed:", e);
-          }
+        // Store image URI directly — already a local file from the picker
+        if (image?.uri) {
+          entry.localImagePath = image.uri;
         }
 
         if (user) {
