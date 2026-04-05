@@ -12,7 +12,8 @@ import { translations } from "../utils/translations";
 import { useAuth } from "../context/AuthContext";
 import { db } from "../firebase";
 import { collection, query, orderBy, getDocs, deleteDoc, doc } from "firebase/firestore";
-import RNShare from "react-native-share";
+let RNShare = null;
+try { RNShare = require("react-native-share").default; } catch {}
 
 const STATUS_FILTERS = ["ALL", "SAFE", "SUSPICIOUS", "SCAM"];
 
