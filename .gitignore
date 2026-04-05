@@ -17,7 +17,6 @@ venv/
 
 # Firebase credentials - never commit these
 GoogleService-Info.plist
-firebase.js
 
 # Node / React Native
 node_modules/
