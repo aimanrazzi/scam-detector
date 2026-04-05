@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from "react";
 import {
   StyleSheet, Text, View, ScrollView,
-  TouchableOpacity, Alert, Share,
+  TouchableOpacity, Alert, Share, Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -12,6 +12,8 @@ import { translations } from "../utils/translations";
 import { useAuth } from "../context/AuthContext";
 import { db } from "../firebase";
 import { collection, query, orderBy, getDocs, deleteDoc, doc } from "firebase/firestore";
+import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
 
 const STATUS_FILTERS = ["ALL", "SAFE", "SUSPICIOUS", "SCAM"];
 
@@ -66,17 +68,37 @@ export default function HistoryScreen() {
   };
 
   const shareItem = async (item) => {
+    const text =
+      `🛡️ ScamShield Result\n\n` +
+      `Input: ${item.input}\n` +
+      `Status: ${item.status}\n` +
+      `Risk Score: ${item.score}/100\n` +
+      `${item.reason}\n\n` +
+      `Checked on: ${formatDate(item.date)}`;
+
     try {
-      await Share.share({
-        message:
-          `🛡️ Scam Detector Result\n\n` +
-          `Input: ${item.input}\n` +
-          `Status: ${item.status}\n` +
-          `Risk Score: ${item.score}/100\n` +
-          `${item.reason}\n\n` +
-          `Checked on: ${item.date}`,
-      });
-    } catch {}
+      if (item.imageUrl) {
+        // Download image to temp file then share with image + text
+        const localUri = FileSystem.cacheDirectory + `scan_${Date.now()}.jpg`;
+        await FileSystem.downloadAsync(item.imageUrl, localUri);
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          // Write text to a temp file alongside image
+          const textUri = FileSystem.cacheDirectory + `scan_${Date.now()}.txt`;
+          await FileSystem.writeAsStringAsync(textUri, text);
+          await Sharing.shareAsync(localUri, {
+            mimeType: "image/jpeg",
+            dialogTitle: "Share Scan Result",
+          });
+          // Share text separately after image
+          await Share.share({ message: text });
+          return;
+        }
+      }
+      await Share.share({ message: text });
+    } catch {
+      await Share.share({ message: text });
+    }
   };
 
   const getStatusColor = (status) => {
@@ -195,6 +217,9 @@ export default function HistoryScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
+              {item.imageUrl && (
+                <Image source={{ uri: item.imageUrl }} style={styles.thumbnail} resizeMode="cover" />
+              )}
               <Text style={styles.inputText} numberOfLines={2}>{item.input}</Text>
               <Text style={styles.reason} numberOfLines={2}>{item.reason}</Text>
               <Text style={styles.date}>{formatDate(item.date)}</Text>
@@ -231,6 +256,7 @@ const makeStyles = (theme) => StyleSheet.create({
     backgroundColor: theme.surface, borderRadius: 14,
     padding: 16, marginBottom: 12, borderWidth: 1, borderColor: theme.border,
   },
+  thumbnail: { width: "100%", height: 140, borderRadius: 8, marginBottom: 10 },
   cardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
   cardTopRight: { flexDirection: "row", alignItems: "center", gap: 10 },
   badge: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 3 },
