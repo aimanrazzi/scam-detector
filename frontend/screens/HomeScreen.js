@@ -228,7 +228,7 @@ export default function HomeScreen({ embedded = false }) {
       Alert.alert("Thank you!", "Your report helps protect other users.");
     } catch (e) {
       console.error("Report error:", e);
-      Alert.alert("Error", e?.message || "Could not submit report. Please try again.");
+      Alert.alert("Report Error", `code: ${e?.code || "none"} | ${e?.message || String(e)}`);
     }
   };
 
