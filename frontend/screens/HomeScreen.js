@@ -43,8 +43,17 @@ export default function HomeScreen({ embedded = false }) {
   const [cacheKey, setCacheKey] = useState(null);
   const [reportedByUser, setReportedByUser] = useState(false);
 
-  const toCacheKey = (text) =>
-    text.trim().toLowerCase().replace(/[^a-z0-9]/g, "_").slice(0, 200);
+  const toCacheKey = (text) => {
+    const SUFFIXES = /\b(sdn\.?\s*bhd\.?|sdn\s*bhd|bhd\.?|pte\.?\s*ltd\.?|ltd\.?|inc\.?|llc\.?|corp\.?|berhad|enterprise|trading|services|solutions|group)\b/gi;
+    return text
+      .toLowerCase()
+      .replace(SUFFIXES, "")         // remove business suffixes
+      .replace(/[^a-z0-9\s]/g, "")  // remove symbols entirely (no replacement)
+      .replace(/\s+/g, " ")          // collapse spaces
+      .trim()
+      .replace(/\s/g, "_")           // spaces to underscores
+      .slice(0, 200);
+  };
 
   useEffect(() => {
     if (result) {
