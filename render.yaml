@@ -3,7 +3,7 @@ services:
     name: scam-detector-api
     runtime: python
     buildCommand: pip install --no-cache-dir -r backend/requirements.txt
-    startCommand: cd backend && python -m gunicorn app:app --bind 0.0.0.0:$PORT
+    startCommand: cd backend && python -m gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120 --workers 1 --threads 2
     envVars:
       - key: GROQ_API_KEY
         sync: false
