@@ -77,22 +77,18 @@ export default function HistoryScreen() {
       `Checked on: ${formatDate(item.date)}`;
 
     try {
-      if (item.imageUrl) {
-        // Download image to temp file then share with image + text
-        const localUri = FileSystem.cacheDirectory + `scan_${Date.now()}.jpg`;
-        await FileSystem.downloadAsync(item.imageUrl, localUri);
-        const canShare = await Sharing.isAvailableAsync();
-        if (canShare) {
-          // Write text to a temp file alongside image
-          const textUri = FileSystem.cacheDirectory + `scan_${Date.now()}.txt`;
-          await FileSystem.writeAsStringAsync(textUri, text);
-          await Sharing.shareAsync(localUri, {
-            mimeType: "image/jpeg",
-            dialogTitle: "Share Scan Result",
-          });
-          // Share text separately after image
-          await Share.share({ message: text });
-          return;
+      if (item.localImagePath) {
+        const fileInfo = await FileSystem.getInfoAsync(item.localImagePath);
+        if (fileInfo.exists) {
+          const canShare = await Sharing.isAvailableAsync();
+          if (canShare) {
+            await Sharing.shareAsync(item.localImagePath, {
+              mimeType: "image/jpeg",
+              dialogTitle: "Share Scan Result",
+            });
+            await Share.share({ message: text });
+            return;
+          }
         }
       }
       await Share.share({ message: text });
@@ -217,8 +213,8 @@ export default function HistoryScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
-              {item.imageUrl && (
-                <Image source={{ uri: item.imageUrl }} style={styles.thumbnail} resizeMode="cover" />
+              {item.localImagePath && (
+                <Image source={{ uri: item.localImagePath }} style={styles.thumbnail} resizeMode="cover" />
               )}
               <Text style={styles.inputText} numberOfLines={2}>{item.input}</Text>
               <Text style={styles.reason} numberOfLines={2}>{item.reason}</Text>

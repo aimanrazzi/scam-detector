@@ -21,9 +21,9 @@ import { useTheme } from "../context/ThemeContext";
 import { translations } from "../utils/translations";
 import LanguageSelector from "../components/LanguageSelector";
 import { useAuth } from "../context/AuthContext";
-import { db, storage } from "../firebase";
+import { db } from "../firebase";
 import { collection, addDoc } from "firebase/firestore";
-import { ref, uploadString, getDownloadURL } from "firebase/storage";
+import * as FileSystem from "expo-file-system";
 
 import { BACKEND_URL } from "../config";
 
@@ -135,20 +135,25 @@ export default function HomeScreen({ embedded = false }) {
           score: data.score,
           reason: data.reason,
           date: new Date().toISOString(),
-          imageUrl: null,
+          localImagePath: null,
         };
+
+        // Save image to local file system if scan used a screenshot
+        if (image?.base64) {
+          try {
+            const dir = FileSystem.documentDirectory + "scan_images/";
+            await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+            const path = dir + `${Date.now()}.jpg`;
+            await FileSystem.writeAsStringAsync(path, image.base64, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+            entry.localImagePath = path;
+          } catch {}
+        }
+
         if (user) {
-          // Upload image to Firebase Storage if scan used a screenshot
-          if (image?.base64) {
-            try {
-              const imgRef = ref(storage, `scans/${user.uid}/${Date.now()}.jpg`);
-              await uploadString(imgRef, image.base64, "base64", { contentType: "image/jpeg" });
-              entry.imageUrl = await getDownloadURL(imgRef);
-            } catch {}
-          }
           await addDoc(collection(db, "scans", user.uid, "entries"), entry);
         } else {
-          // Guest — save to local AsyncStorage
           const stored = await AsyncStorage.getItem("scan_history");
           const history = stored ? JSON.parse(stored) : [];
           history.push(entry);
