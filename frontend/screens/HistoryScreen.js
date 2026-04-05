@@ -1,7 +1,7 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback } from "react";
 import {
   StyleSheet, Text, View, ScrollView,
-  TouchableOpacity, Alert, Share, Image, Animated,
+  TouchableOpacity, Alert, Share, Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -12,8 +12,7 @@ import { translations } from "../utils/translations";
 import { useAuth } from "../context/AuthContext";
 import { db } from "../firebase";
 import { collection, query, orderBy, getDocs, deleteDoc, doc } from "firebase/firestore";
-import * as Sharing from "expo-sharing";
-import * as Clipboard from "expo-clipboard";
+import RNShare from "react-native-share";
 
 const STATUS_FILTERS = ["ALL", "SAFE", "SUSPICIOUS", "SCAM"];
 
@@ -25,16 +24,7 @@ export default function HistoryScreen() {
   const [history, setHistory] = useState([]);
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [dateFilter, setDateFilter] = useState("ALL");
-  const toastAnim = useRef(new Animated.Value(0)).current;
   const styles = makeStyles(theme);
-
-  const showToast = () => {
-    Animated.sequence([
-      Animated.timing(toastAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
-      Animated.delay(2000),
-      Animated.timing(toastAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
-    ]).start();
-  };
 
   useFocusEffect(useCallback(() => { loadHistory(); }, [loadHistory]));
 
@@ -82,20 +72,20 @@ export default function HistoryScreen() {
 
     try {
       if (item.localImagePath) {
-        const canShare = await Sharing.isAvailableAsync();
-        if (canShare) {
-          await Clipboard.setStringAsync(text);
-          showToast();
-          await Sharing.shareAsync(item.localImagePath, {
-            mimeType: "image/jpeg",
-            dialogTitle: "Share Scan Result",
-          });
-          return;
-        }
+        // Share image + text together in one action
+        await RNShare.open({
+          url: item.localImagePath,
+          message: text,
+          type: "image/jpeg",
+          title: "ScamShield Result",
+        });
+        return;
       }
       await Share.share({ message: text });
-    } catch {
-      await Share.share({ message: text });
+    } catch (e) {
+      if (e?.message !== "User did not share") {
+        await Share.share({ message: text });
+      }
     }
   };
 
@@ -226,10 +216,6 @@ export default function HistoryScreen() {
         )}
       </ScrollView>
 
-      {/* Toast notification */}
-      <Animated.View style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }]}>
-        <Text style={styles.toastText}>📋 Analysis copied — paste as caption</Text>
-      </Animated.View>
     </SafeAreaView>
   );
 }
@@ -273,11 +259,4 @@ const makeStyles = (theme) => StyleSheet.create({
   reason: { fontSize: 13, color: theme.subtext, lineHeight: 19, marginBottom: 6 },
   date: { fontSize: 11, color: theme.subtext },
 
-  toast: {
-    position: "absolute", bottom: 100, alignSelf: "center",
-    backgroundColor: "#1c1c1e", paddingHorizontal: 18, paddingVertical: 10,
-    borderRadius: 20, shadowColor: "#000", shadowOpacity: 0.3, shadowRadius: 8,
-    elevation: 6,
-  },
-  toastText: { color: "#fff", fontSize: 13, fontWeight: "600" },
 });
