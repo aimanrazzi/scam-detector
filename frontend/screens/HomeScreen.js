@@ -20,6 +20,9 @@ import { useLang } from "../context/LanguageContext";
 import { useTheme } from "../context/ThemeContext";
 import { translations } from "../utils/translations";
 import LanguageSelector from "../components/LanguageSelector";
+import { useAuth } from "../context/AuthContext";
+import { db } from "../firebase";
+import { collection, addDoc } from "firebase/firestore";
 
 import { BACKEND_URL } from "../config";
 
@@ -27,6 +30,7 @@ export default function HomeScreen({ embedded = false }) {
   const { lang } = useLang();
   const t = translations[lang] || translations.en;
   const { theme } = useTheme();
+  const { user } = useAuth();
   const [inputText, setInputText] = useState("");
   const [image, setImage] = useState(null);
   const [result, setResult] = useState(null);
@@ -131,11 +135,17 @@ export default function HomeScreen({ embedded = false }) {
           reason: data.reason,
           date: new Date().toISOString(),
         };
-        const stored = await AsyncStorage.getItem("scan_history");
-        const history = stored ? JSON.parse(stored) : [];
-        history.push(entry);
-        if (history.length > 50) history.shift();
-        await AsyncStorage.setItem("scan_history", JSON.stringify(history));
+        if (user) {
+          // Logged in — save to Firestore
+          await addDoc(collection(db, "scans", user.uid, "entries"), entry);
+        } else {
+          // Guest — save to local AsyncStorage
+          const stored = await AsyncStorage.getItem("scan_history");
+          const history = stored ? JSON.parse(stored) : [];
+          history.push(entry);
+          if (history.length > 50) history.shift();
+          await AsyncStorage.setItem("scan_history", JSON.stringify(history));
+        }
       }
     } catch (err) {
       if (err.name === "AbortError") {

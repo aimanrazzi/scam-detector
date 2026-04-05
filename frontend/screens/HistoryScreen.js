@@ -9,6 +9,9 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useLang } from "../context/LanguageContext";
 import { useTheme } from "../context/ThemeContext";
 import { translations } from "../utils/translations";
+import { useAuth } from "../context/AuthContext";
+import { db } from "../firebase";
+import { collection, query, orderBy, getDocs, deleteDoc, doc } from "firebase/firestore";
 
 const STATUS_FILTERS = ["ALL", "SAFE", "SUSPICIOUS", "SCAM"];
 
@@ -16,26 +19,46 @@ export default function HistoryScreen() {
   const { lang } = useLang();
   const t = translations[lang] || translations.en;
   const { theme } = useTheme();
+  const { user } = useAuth();
   const [history, setHistory] = useState([]);
   const [statusFilter, setStatusFilter] = useState("ALL");
-  const [dateFilter, setDateFilter] = useState("ALL"); // ALL, TODAY, WEEK
+  const [dateFilter, setDateFilter] = useState("ALL");
   const styles = makeStyles(theme);
 
   useFocusEffect(useCallback(() => { loadHistory(); }, [loadHistory]));
 
   const loadHistory = useCallback(async () => {
     try {
-      const stored = await AsyncStorage.getItem("scan_history");
-      setHistory(stored ? JSON.parse(stored) : []);
+      if (user) {
+        // Logged in — load from Firestore
+        const q = query(
+          collection(db, "scans", user.uid, "entries"),
+          orderBy("date", "desc")
+        );
+        const snapshot = await getDocs(q);
+        const items = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        setHistory(items);
+      } else {
+        // Guest — load from AsyncStorage
+        const stored = await AsyncStorage.getItem("scan_history");
+        setHistory(stored ? JSON.parse(stored).reverse() : []);
+      }
     } catch {}
-  }, []);
+  }, [user]);
 
   const clearHistory = () => {
     Alert.alert(t.clearHistory, t.clearHistoryConfirm, [
       { text: t.cancel, style: "cancel" },
       {
         text: t.clearAll, style: "destructive", onPress: async () => {
-          await AsyncStorage.removeItem("scan_history");
+          if (user) {
+            // Delete all Firestore docs for this user
+            const q = query(collection(db, "scans", user.uid, "entries"));
+            const snapshot = await getDocs(q);
+            await Promise.all(snapshot.docs.map(d => deleteDoc(doc(db, "scans", user.uid, "entries", d.id))));
+          } else {
+            await AsyncStorage.removeItem("scan_history");
+          }
           setHistory([]);
         }
       },
@@ -91,7 +114,7 @@ export default function HistoryScreen() {
     return d.toLocaleString("en-MY");
   };
 
-  const filtered = history.slice().reverse().filter((item) => {
+  const filtered = history.filter((item) => {
     const statusOk = statusFilter === "ALL" || item.status === statusFilter;
     const dateOk =
       dateFilter === "ALL" ||
