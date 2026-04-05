@@ -68,16 +68,27 @@ export default function HistoryScreen() {
     return "🚨";
   };
 
+  const parseDate = (dateStr) => {
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
   const isToday = (dateStr) => {
-    const today = new Date().toDateString();
-    return new Date(dateStr).toDateString() === today;
+    const d = parseDate(dateStr);
+    if (!d) return false;
+    return d.toDateString() === new Date().toDateString();
   };
 
   const isThisWeek = (dateStr) => {
-    const now = new Date();
-    const d = new Date(dateStr);
-    const diff = (now - d) / (1000 * 60 * 60 * 24);
-    return diff <= 7;
+    const d = parseDate(dateStr);
+    if (!d) return false;
+    return (new Date() - d) / (1000 * 60 * 60 * 24) <= 7;
+  };
+
+  const formatDate = (dateStr) => {
+    const d = parseDate(dateStr);
+    if (!d) return dateStr; // fallback: show raw string
+    return d.toLocaleString("en-MY");
   };
 
   const filtered = history.slice().reverse().filter((item) => {
@@ -163,7 +174,7 @@ export default function HistoryScreen() {
               </View>
               <Text style={styles.inputText} numberOfLines={2}>{item.input}</Text>
               <Text style={styles.reason} numberOfLines={2}>{item.reason}</Text>
-              <Text style={styles.date}>{new Date(item.date).toLocaleString("en-MY")}</Text>
+              <Text style={styles.date}>{formatDate(item.date)}</Text>
             </View>
           ))
         )}
