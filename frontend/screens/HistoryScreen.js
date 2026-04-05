@@ -14,6 +14,7 @@ import { db } from "../firebase";
 import { collection, query, orderBy, getDocs, deleteDoc, doc } from "firebase/firestore";
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
+import * as Clipboard from "expo-clipboard";
 
 const STATUS_FILTERS = ["ALL", "SAFE", "SUSPICIOUS", "SCAM"];
 
@@ -70,9 +71,7 @@ export default function HistoryScreen() {
   const shareItem = async (item) => {
     const text =
       `🛡️ ScamShield Result\n\n` +
-      `Input: ${item.input}\n` +
-      `Status: ${item.status}\n` +
-      `Risk Score: ${item.score}/100\n` +
+      `Status: ${item.status} — ${item.score}/100\n` +
       `${item.reason}\n\n` +
       `Checked on: ${formatDate(item.date)}`;
 
@@ -82,11 +81,18 @@ export default function HistoryScreen() {
         if (fileInfo.exists) {
           const canShare = await Sharing.isAvailableAsync();
           if (canShare) {
-            await Sharing.shareAsync(item.localImagePath, {
-              mimeType: "image/jpeg",
-              dialogTitle: "Share Scan Result",
-            });
-            await Share.share({ message: text });
+            // Copy text to clipboard so user can paste as caption
+            await Clipboard.setStringAsync(text);
+            Alert.alert(
+              "Analysis copied!",
+              "The scan result text has been copied to your clipboard. After selecting where to share the image, paste it as a caption.",
+              [{ text: "OK", onPress: async () => {
+                await Sharing.shareAsync(item.localImagePath, {
+                  mimeType: "image/jpeg",
+                  dialogTitle: "Share Scan Screenshot",
+                });
+              }}]
+            );
             return;
           }
         }
