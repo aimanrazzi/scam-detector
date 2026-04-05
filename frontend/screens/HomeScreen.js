@@ -11,6 +11,7 @@ import {
   Image,
   Share,
   Animated,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -22,7 +23,7 @@ import { translations } from "../utils/translations";
 import LanguageSelector from "../components/LanguageSelector";
 import { useAuth } from "../context/AuthContext";
 import { db } from "../firebase";
-import { collection, addDoc } from "firebase/firestore";
+import { collection, addDoc, doc, getDoc, setDoc, increment } from "firebase/firestore";
 
 import { BACKEND_URL } from "../config";
 
@@ -39,6 +40,12 @@ export default function HomeScreen({ embedded = false }) {
   const [error, setError] = useState(null);
   const scoreAnim = useRef(new Animated.Value(0)).current;
   const slowTimer = useRef(null);
+  const [cacheKey, setCacheKey] = useState(null);
+  const [fromCache, setFromCache] = useState(false);
+  const [reportedByUser, setReportedByUser] = useState(false);
+
+  const toCacheKey = (text) =>
+    text.trim().toLowerCase().replace(/[^a-z0-9]/g, "_").slice(0, 200);
 
   useEffect(() => {
     if (result) {
@@ -91,6 +98,18 @@ export default function HomeScreen({ embedded = false }) {
     }
   };
 
+  const saveToHistory = async (entry) => {
+    if (user) {
+      await addDoc(collection(db, "scans", user.uid, "entries"), entry);
+    } else {
+      const stored = await AsyncStorage.getItem("scan_history");
+      const history = stored ? JSON.parse(stored) : [];
+      history.push(entry);
+      if (history.length > 50) history.shift();
+      await AsyncStorage.setItem("scan_history", JSON.stringify(history));
+    }
+  };
+
   const analyze = async () => {
     if (!inputText.trim() && !image) return;
 
@@ -98,6 +117,39 @@ export default function HomeScreen({ embedded = false }) {
     setSlowLoad(false);
     setResult(null);
     setError(null);
+    setCacheKey(null);
+    setFromCache(false);
+    setReportedByUser(false);
+
+    let localCacheKey = null;
+
+    // Check cache for text inputs only
+    if (inputText.trim() && !image) {
+      localCacheKey = toCacheKey(inputText);
+      setCacheKey(localCacheKey);
+      try {
+        const snap = await getDoc(doc(db, "cache", localCacheKey));
+        if (snap.exists()) {
+          const cached = snap.data();
+          const ageMs = Date.now() - new Date(cached.cachedAt).getTime();
+          if (ageMs < 7 * 24 * 60 * 60 * 1000) {
+            const cachedResult = { ...cached.result, reportCount: cached.reportCount || 0 };
+            setResult(cachedResult);
+            setFromCache(true);
+            setLoading(false);
+            await saveToHistory({
+              input: inputText.trim(),
+              status: cached.result.status,
+              score: cached.result.score,
+              reason: cached.result.reason,
+              date: new Date().toISOString(),
+              localImagePath: null,
+            });
+            return;
+          }
+        }
+      } catch {}
+    }
 
     // Show "waking up server" hint after 6 seconds
     slowTimer.current = setTimeout(() => setSlowLoad(true), 6000);
@@ -127,30 +179,30 @@ export default function HomeScreen({ embedded = false }) {
       if (data.error) {
         setError(data.error);
       } else {
-        setResult(data);
+        setResult({ ...data, reportCount: 0 });
+
+        // Save to cache for text inputs
+        if (inputText.trim() && !image && localCacheKey) {
+          try {
+            await setDoc(doc(db, "cache", localCacheKey), {
+              input: inputText.trim(),
+              result: data,
+              cachedAt: new Date().toISOString(),
+              reportCount: 0,
+            });
+          } catch {}
+        }
+
         const entry = {
           input: image ? "[Screenshot]" : inputText.trim(),
           status: data.status,
           score: data.score,
           reason: data.reason,
           date: new Date().toISOString(),
-          localImagePath: null,
+          localImagePath: image?.uri || null,
         };
 
-        // Store image URI directly — already a local file from the picker
-        if (image?.uri) {
-          entry.localImagePath = image.uri;
-        }
-
-        if (user) {
-          await addDoc(collection(db, "scans", user.uid, "entries"), entry);
-        } else {
-          const stored = await AsyncStorage.getItem("scan_history");
-          const history = stored ? JSON.parse(stored) : [];
-          history.push(entry);
-          if (history.length > 50) history.shift();
-          await AsyncStorage.setItem("scan_history", JSON.stringify(history));
-        }
+        await saveToHistory(entry);
       }
     } catch (err) {
       if (err.name === "AbortError") {
@@ -177,6 +229,27 @@ export default function HomeScreen({ embedded = false }) {
     setImage(null);
     setResult(null);
     setError(null);
+    setCacheKey(null);
+    setFromCache(false);
+    setReportedByUser(false);
+  };
+
+  const reportAsScam = async () => {
+    try {
+      await addDoc(collection(db, "reports"), {
+        input: inputText.trim(),
+        reportedAt: new Date().toISOString(),
+        reportedBy: user?.uid || "guest",
+      });
+      if (cacheKey) {
+        await setDoc(doc(db, "cache", cacheKey), { reportCount: increment(1) }, { merge: true });
+      }
+      setReportedByUser(true);
+      setResult(prev => ({ ...prev, reportCount: (prev.reportCount || 0) + 1 }));
+      Alert.alert("Thank you!", "Your report helps protect other users.");
+    } catch {
+      Alert.alert("Error", "Could not submit report. Please try again.");
+    }
   };
 
   const shareResult = async () => {
@@ -331,6 +404,19 @@ export default function HomeScreen({ embedded = false }) {
                   />
                 </View>
               </View>
+
+              {/* Cache + community signals */}
+              {fromCache && (
+                <Text style={styles.cacheTag}>⚡ Instant result</Text>
+              )}
+              {result.reportCount > 0 && (
+                <View style={[styles.semakMuleResult, { backgroundColor: theme.danger + "22", borderColor: theme.danger, marginBottom: 12 }]}>
+                  <Text style={{ fontSize: 16 }}>🚨</Text>
+                  <Text style={[styles.semakMuleResultText, { color: theme.danger }]}>
+                    {result.reportCount} user{result.reportCount !== 1 ? "s" : ""} reported this as a scam
+                  </Text>
+                </View>
+              )}
 
               {/* Reason */}
               <Text style={styles.reasonLabel}>{t.whatWeFound}</Text>
@@ -487,6 +573,19 @@ export default function HomeScreen({ embedded = false }) {
                     </View>
                   )}
                 </View>
+              )}
+
+              {/* Report as Scam button — text inputs only */}
+              {!image && inputText.trim() && (
+                <TouchableOpacity
+                  style={[styles.reportButton, reportedByUser && { opacity: 0.5 }]}
+                  onPress={reportAsScam}
+                  disabled={reportedByUser}
+                >
+                  <Text style={styles.reportButtonText}>
+                    {reportedByUser ? "✓ Reported" : "🚨 Report as Scam"}
+                  </Text>
+                </TouchableOpacity>
               )}
             </View>
           )}
@@ -814,6 +913,25 @@ const makeStyles = (theme) => StyleSheet.create({
   },
   semakMuleText: {
     color: theme.accent,
+    fontSize: 13,
+    fontWeight: "bold",
+  },
+  cacheTag: {
+    fontSize: 11,
+    color: theme.accent,
+    fontWeight: "600",
+    marginBottom: 8,
+  },
+  reportButton: {
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: theme.danger,
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  reportButtonText: {
+    color: theme.danger,
     fontSize: 13,
     fontWeight: "bold",
   },
