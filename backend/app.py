@@ -933,92 +933,131 @@ def analyze():
                     detected_social["platform"], detected_social["handle"]
                 )
 
-        # Step 5: Dataset check for malicious URLs
+        # ── Step 5: Collect external signals with capped contributions ──
+
+        SAFE_DOMAINS = {
+            "google.com", "youtube.com", "facebook.com", "instagram.com",
+            "twitter.com", "x.com", "tiktok.com", "linkedin.com", "whatsapp.com",
+            "maybank.com", "maybank2u.com", "cimb.com", "rhb.com",
+            "hongleongbank.com", "publicbank.com.my", "ambank.com.my",
+            "bsn.com.my", "bankislam.com.my", "muamalat.com.my", "affinbank.com.my",
+            "pdrm.gov.my", "hasil.gov.my", "jpj.gov.my", "bnm.gov.my", "sst.customs.gov.my",
+            "gov.my", "edu.my", "shopee.com.my", "lazada.com.my",
+            "grab.com", "tngdigital.com.my", "touch-n-go.com", "boost.com.my",
+        }
+
+        external_score = 0
+        findings = list(ai_result.get("findings", []))
         dataset_label = None
+
+        # Dataset check — max +25
         if detected_url:
             dataset_label = check_url_in_dataset(detected_url)
             if dataset_label:
-                boost = {"phishing": 50, "malware": 55, "defacement": 40}.get(dataset_label, 35)
-                ai_result["score"] = min(100, ai_result["score"] + boost)
-                ai_result["findings"] = ai_result.get("findings", []) + [
-                    f"URL matched a known {dataset_label} entry in our threat database."
-                ]
+                dataset_boost = {"phishing": 25, "malware": 25, "defacement": 20}.get(dataset_label, 15)
+                external_score += dataset_boost
+                findings.append(f"URL matched a known {dataset_label} entry in our threat database.")
 
-        # Step 6: Boost score if flagged by VirusTotal or dataset
-        def _update_status(result):
-            if result["score"] >= 70:
-                result["status"] = "SCAM"
-            elif result["score"] >= 31:
-                result["status"] = "SUSPICIOUS"
-
+        # VirusTotal URL — max +25
         if url_result and url_result["flagged"]:
-            ai_result["score"] = min(100, ai_result["score"] + 20)
-            ai_result["reason"] += " URL was also flagged by VirusTotal."
-            _update_status(ai_result)
+            vt_boost = min(25, 10 + url_result.get("malicious", 0) * 3)
+            external_score += vt_boost
+            findings.append("URL was flagged by VirusTotal threat engines.")
 
+        # VirusTotal IP — max +25
         if ip_result and ip_result["flagged"]:
-            ai_result["score"] = min(100, ai_result["score"] + 20)
-            ai_result["reason"] += " IP address was flagged by VirusTotal."
-            _update_status(ai_result)
+            ip_boost = min(25, 10 + ip_result.get("malicious", 0) * 3)
+            external_score += ip_boost
+            findings.append("IP address was flagged by VirusTotal.")
 
-        # Phone number baseline: AI can't judge a raw number, so start at 25 (uncertain)
-        if detected_phone:
-            if ai_result["score"] < 25:
-                ai_result["score"] = 25
-                ai_result["findings"] = ai_result.get("findings", []) + [
-                    "Phone number detected — cannot determine safety from number alone."
-                ]
-            _update_status(ai_result)
+        # Semak Mule phone — max +30
+        semak_boost = 0
+        if semak_result and semak_result["found"]:
+            semak_boost = min(30, semak_result["reports"] * 10)
+            external_score += semak_boost
+            findings.append(f"🚨 This phone number has {semak_result['reports']} scam report(s) on Semak Mule (PDRM).")
+        elif semak_result and not semak_result["found"]:
+            findings.append("✅ This phone number — no reports found on Semak Mule (PDRM).")
+        elif semak_result is None and detected_phone:
+            findings.append("⚠️ Could not reach Semak Mule to verify this phone number.")
 
-        def _apply_semak_boost(result, label):
-            if result and result["found"]:
-                reports = result["reports"]
-                boost = min(60, reports * 20)
-                ai_result["score"] = min(100, ai_result["score"] + boost)
-                ai_result["findings"] = ai_result.get("findings", []) + [
-                    f"🚨 {label} has {reports} scam report(s) on Semak Mule (PDRM)."
-                ]
-                _update_status(ai_result)
-            elif result and not result["found"]:
-                ai_result["findings"] = ai_result.get("findings", []) + [
-                    f"✅ {label} — no reports found on Semak Mule (PDRM)."
-                ]
-            else:
-                ai_result["findings"] = ai_result.get("findings", []) + [
-                    f"⚠️ Could not reach Semak Mule to verify {label}."
-                ]
+        # Semak Mule email — max +30
+        email_semak_boost = 0
+        if email_semak and email_semak["found"]:
+            email_semak_boost = min(30, email_semak["reports"] * 10)
+            external_score += email_semak_boost
+            findings.append(f"🚨 This email has {email_semak['reports']} scam report(s) on Semak Mule (PDRM).")
+        elif email_semak and not email_semak["found"]:
+            findings.append("✅ This email address — no reports found on Semak Mule (PDRM).")
+        elif email_semak is None and detected_email:
+            findings.append("⚠️ Could not reach Semak Mule to verify this email.")
 
-        if detected_phone:
-            _apply_semak_boost(semak_result, "This phone number")
-        if detected_email:
-            _apply_semak_boost(email_semak, "This email address")
-
-        # Social media handle check
+        # Social handle — max +15
         if detected_social and social_result:
             handle = detected_social["handle"]
             platform = detected_social["platform"]
             if social_result["found_reports"]:
                 count = social_result["report_count"]
-                boost = min(40, count * 15)
-                ai_result["score"] = min(100, ai_result["score"] + boost)
-                ai_result["findings"] = ai_result.get("findings", []) + [
-                    f"🚨 @{handle} ({platform}) found in {count} scam-related search result(s)."
-                ]
-                ai_result["findings"] += [f"  • {s}" for s in social_result["snippets"][:2]]
-                _update_status(ai_result)
+                external_score += min(15, count * 5)
+                findings.append(f"🚨 @{handle} ({platform}) found in {count} scam-related search result(s).")
+                findings += [f"  • {s}" for s in social_result["snippets"][:2]]
             else:
-                ai_result["findings"] = ai_result.get("findings", []) + [
-                    f"✅ @{handle} ({platform}) — no scam reports found online."
-                ]
+                findings.append(f"✅ @{handle} ({platform}) — no scam reports found online.")
 
-        # Final status sync — always reflect the actual score
-        _update_status(ai_result)
+        # Legitimacy signals — reduce external score
+        if detected_url:
+            try:
+                domain = urlparse(detected_url).netloc.lower().removeprefix("www.")
+                if any(domain == s or domain.endswith("." + s) for s in SAFE_DOMAINS):
+                    external_score -= 20
+                    findings.append(f"✅ {domain} is a recognised legitimate domain.")
+            except Exception:
+                pass
+
+        # Valid phone with no Semak Mule reports — slight negative signal
+        if detected_phone and phone_result and phone_result.get("valid") and semak_boost == 0:
+            external_score -= 10
+
+        # Phone baseline — AI unreliable for bare numbers
+        if detected_phone and ai_result["score"] < 25:
+            ai_result["score"] = 25
+            findings.append("Phone number detected — cannot determine safety from number alone.")
+
+        # ── Step 6: Weighted formula — AI 50% + external signals 50% ──
+        external_score = max(0, min(100, external_score))
+        final_score = round((ai_result["score"] * 0.5) + (external_score * 0.5))
+
+        # ── Hard overrides — high-confidence signals force minimum scores ──
+        # Semak Mule 3+ reports → force ≥ 80
+        phone_reports = semak_result.get("reports", 0) if semak_result and semak_result["found"] else 0
+        email_reports = email_semak.get("reports", 0) if email_semak and email_semak["found"] else 0
+        if phone_reports >= 3 or email_reports >= 3:
+            final_score = max(final_score, 80)
+
+        # VirusTotal multiple engines flagged → force ≥ 75
+        if (url_result and url_result.get("malicious", 0) >= 3) or \
+           (ip_result and ip_result.get("malicious", 0) >= 3):
+            final_score = max(final_score, 75)
+
+        # Dataset phishing/malware match → force ≥ 75
+        if dataset_label in ("phishing", "malware"):
+            final_score = max(final_score, 75)
+
+        # Final clamp and status
+        final_score = min(100, max(0, final_score))
+
+        if final_score >= 70:
+            final_status = "SCAM"
+        elif final_score >= 31:
+            final_status = "SUSPICIOUS"
+        else:
+            final_status = "SAFE"
 
         return jsonify({
-            "score": ai_result["score"],
-            "status": ai_result["status"],
+            "score": final_score,
+            "status": final_status,
             "reason": ai_result["reason"],
-            "findings": ai_result.get("findings", []),
+            "findings": findings,
             "url_scanned": detected_url,
             "url_flagged": url_result["flagged"] if url_result else None,
             "dataset_label": dataset_label,
