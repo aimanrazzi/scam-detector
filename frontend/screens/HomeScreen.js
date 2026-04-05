@@ -41,7 +41,6 @@ export default function HomeScreen({ embedded = false }) {
   const scoreAnim = useRef(new Animated.Value(0)).current;
   const slowTimer = useRef(null);
   const [cacheKey, setCacheKey] = useState(null);
-  const [fromCache, setFromCache] = useState(false);
   const [reportedByUser, setReportedByUser] = useState(false);
 
   const toCacheKey = (text) =>
@@ -118,37 +117,43 @@ export default function HomeScreen({ embedded = false }) {
     setResult(null);
     setError(null);
     setCacheKey(null);
-    setFromCache(false);
     setReportedByUser(false);
 
     let localCacheKey = null;
+    let communityReportCount = 0;
 
-    // Check cache for text inputs only
+    // Check community reports for text inputs
     if (inputText.trim() && !image) {
       localCacheKey = toCacheKey(inputText);
       setCacheKey(localCacheKey);
       try {
-        const snap = await getDoc(doc(db, "cache", localCacheKey));
-        if (snap.exists()) {
-          const cached = snap.data();
-          const ageMs = Date.now() - new Date(cached.cachedAt).getTime();
-          if (ageMs < 7 * 24 * 60 * 60 * 1000) {
-            const cachedResult = { ...cached.result, reportCount: cached.reportCount || 0 };
-            setResult(cachedResult);
-            setFromCache(true);
-            setLoading(false);
-            await saveToHistory({
-              input: inputText.trim(),
-              status: cached.result.status,
-              score: cached.result.score,
-              reason: cached.result.reason,
-              date: new Date().toISOString(),
-              localImagePath: null,
-            });
-            return;
-          }
+        const reportSnap = await getDoc(doc(db, "reports", localCacheKey));
+        if (reportSnap.exists()) {
+          communityReportCount = reportSnap.data().count || 0;
         }
       } catch {}
+
+      // 3+ reports → instant SCAM, skip API
+      if (communityReportCount >= 3) {
+        const scamResult = {
+          status: "SCAM",
+          score: 95,
+          reason: `This has been reported as a scam by ${communityReportCount} users.`,
+          findings: [`Flagged by ${communityReportCount} community reports.`, "Treat with extreme caution."],
+          reportCount: communityReportCount,
+        };
+        setResult(scamResult);
+        setLoading(false);
+        await saveToHistory({
+          input: inputText.trim(),
+          status: scamResult.status,
+          score: scamResult.score,
+          reason: scamResult.reason,
+          date: new Date().toISOString(),
+          localImagePath: null,
+        });
+        return;
+      }
     }
 
     // Show "waking up server" hint after 6 seconds
@@ -179,19 +184,7 @@ export default function HomeScreen({ embedded = false }) {
       if (data.error) {
         setError(data.error);
       } else {
-        setResult({ ...data, reportCount: 0 });
-
-        // Save to cache for text inputs
-        if (inputText.trim() && !image && localCacheKey) {
-          try {
-            await setDoc(doc(db, "cache", localCacheKey), {
-              input: inputText.trim(),
-              result: data,
-              cachedAt: new Date().toISOString(),
-              reportCount: 0,
-            });
-          } catch {}
-        }
+        setResult({ ...data, reportCount: communityReportCount });
 
         const entry = {
           input: image ? "[Screenshot]" : inputText.trim(),
@@ -201,7 +194,6 @@ export default function HomeScreen({ embedded = false }) {
           date: new Date().toISOString(),
           localImagePath: image?.uri || null,
         };
-
         await saveToHistory(entry);
       }
     } catch (err) {
@@ -230,20 +222,17 @@ export default function HomeScreen({ embedded = false }) {
     setResult(null);
     setError(null);
     setCacheKey(null);
-    setFromCache(false);
     setReportedByUser(false);
   };
 
   const reportAsScam = async () => {
+    if (!cacheKey) return;
     try {
-      await addDoc(collection(db, "reports"), {
+      await setDoc(doc(db, "reports", cacheKey), {
         input: inputText.trim(),
-        reportedAt: new Date().toISOString(),
-        reportedBy: user?.uid || "guest",
-      });
-      if (cacheKey) {
-        await setDoc(doc(db, "cache", cacheKey), { reportCount: increment(1) }, { merge: true });
-      }
+        count: increment(1),
+        lastReportedAt: new Date().toISOString(),
+      }, { merge: true });
       setReportedByUser(true);
       setResult(prev => ({ ...prev, reportCount: (prev.reportCount || 0) + 1 }));
       Alert.alert("Thank you!", "Your report helps protect other users.");
@@ -405,10 +394,7 @@ export default function HomeScreen({ embedded = false }) {
                 </View>
               </View>
 
-              {/* Cache + community signals */}
-              {fromCache && (
-                <Text style={styles.cacheTag}>⚡ Instant result</Text>
-              )}
+              {/* Community reports warning */}
               {result.reportCount > 0 && (
                 <View style={[styles.semakMuleResult, { backgroundColor: theme.danger + "22", borderColor: theme.danger, marginBottom: 12 }]}>
                   <Text style={{ fontSize: 16 }}>🚨</Text>
