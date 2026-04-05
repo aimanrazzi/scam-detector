@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import {
   StyleSheet, Text, View, ScrollView,
   TouchableOpacity, Alert, Share, Image,
@@ -13,7 +13,7 @@ import { useAuth } from "../context/AuthContext";
 import { db } from "../firebase";
 import { collection, query, orderBy, getDocs, deleteDoc, doc } from "firebase/firestore";
 import * as Sharing from "expo-sharing";
-import * as Clipboard from "expo-clipboard";
+import { captureRef } from "react-native-view-shot";
 
 const STATUS_FILTERS = ["ALL", "SAFE", "SUSPICIOUS", "SCAM"];
 
@@ -25,6 +25,8 @@ export default function HistoryScreen() {
   const [history, setHistory] = useState([]);
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [dateFilter, setDateFilter] = useState("ALL");
+  const [sharingItem, setSharingItem] = useState(null);
+  const shareCardRef = useRef(null);
   const styles = makeStyles(theme);
 
   useFocusEffect(useCallback(() => { loadHistory(); }, [loadHistory]));
@@ -32,7 +34,6 @@ export default function HistoryScreen() {
   const loadHistory = useCallback(async () => {
     try {
       if (user) {
-        // Logged in — load from Firestore
         const q = query(
           collection(db, "scans", user.uid, "entries"),
           orderBy("date", "desc")
@@ -41,7 +42,6 @@ export default function HistoryScreen() {
         const items = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         setHistory(items);
       } else {
-        // Guest — load from AsyncStorage
         const stored = await AsyncStorage.getItem("scan_history");
         setHistory(stored ? JSON.parse(stored).reverse() : []);
       }
@@ -54,7 +54,6 @@ export default function HistoryScreen() {
       {
         text: t.clearAll, style: "destructive", onPress: async () => {
           if (user) {
-            // Delete all Firestore docs for this user
             const q = query(collection(db, "scans", user.uid, "entries"));
             const snapshot = await getDocs(q);
             await Promise.all(snapshot.docs.map(d => deleteDoc(doc(db, "scans", user.uid, "entries", d.id))));
@@ -68,35 +67,36 @@ export default function HistoryScreen() {
   };
 
   const shareItem = async (item) => {
-    const text =
+    const fallbackText =
       `🛡️ ScamShield Result\n\n` +
       `Status: ${item.status} — ${item.score}/100\n` +
       `${item.reason}\n\n` +
       `Checked on: ${formatDate(item.date)}`;
 
     try {
-      if (item.localImagePath) {
-        const canShare = await Sharing.isAvailableAsync();
-        if (canShare) {
-          // Copy text to clipboard silently, then open image share
-          await Clipboard.setStringAsync(text);
-          await Sharing.shareAsync(item.localImagePath, {
-            mimeType: "image/jpeg",
-            dialogTitle: "Analysis copied — paste as caption after sharing",
-          });
-          return;
-        }
+      setSharingItem(item);
+      // Wait for the share card to render
+      await new Promise(resolve => setTimeout(resolve, 200));
+      const uri = await captureRef(shareCardRef, { format: "jpg", quality: 0.92 });
+      setSharingItem(null);
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(uri, {
+          mimeType: "image/jpeg",
+          dialogTitle: "Share Scan Result",
+        });
+        return;
       }
-      await Share.share({ message: text });
     } catch {
-      await Share.share({ message: text });
+      setSharingItem(null);
     }
+    await Share.share({ message: fallbackText });
   };
 
   const getStatusColor = (status) => {
-    if (status === "SAFE") return theme.safe;
-    if (status === "SUSPICIOUS") return theme.warning;
-    return theme.danger;
+    if (status === "SAFE") return "#22c55e";
+    if (status === "SUSPICIOUS") return "#f59e0b";
+    return "#ef4444";
   };
 
   const getStatusIcon = (status) => {
@@ -124,7 +124,7 @@ export default function HistoryScreen() {
 
   const formatDate = (dateStr) => {
     const d = parseDate(dateStr);
-    if (!d) return dateStr; // fallback: show raw string
+    if (!d) return dateStr;
     return d.toLocaleString("en-MY");
   };
 
@@ -219,6 +219,29 @@ export default function HistoryScreen() {
           ))
         )}
       </ScrollView>
+
+      {/* Hidden share card — captured as image when sharing */}
+      {sharingItem && (
+        <View ref={shareCardRef} collapsable={false} style={styles.shareCard}>
+          {sharingItem.localImagePath && (
+            <Image
+              source={{ uri: sharingItem.localImagePath }}
+              style={styles.shareCardImage}
+              resizeMode="cover"
+            />
+          )}
+          <View style={styles.shareCardBody}>
+            <Text style={styles.shareCardBrand}>🛡️ ScamShield</Text>
+            <View style={[styles.shareCardBadge, { backgroundColor: getStatusColor(sharingItem.status) }]}>
+              <Text style={styles.shareCardBadgeText}>
+                {getStatusIcon(sharingItem.status)} {sharingItem.status} — {sharingItem.score}/100
+              </Text>
+            </View>
+            <Text style={styles.shareCardReason}>{sharingItem.reason}</Text>
+            <Text style={styles.shareCardDate}>Checked on: {formatDate(sharingItem.date)}</Text>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -230,19 +253,18 @@ const makeStyles = (theme) => StyleSheet.create({
     flexDirection: "row", justifyContent: "space-between",
     alignItems: "flex-start", marginBottom: 16, marginTop: 10,
   },
-  title: { fontSize: 24, fontWeight: "bold", color: theme.text },
-  subtitle: { fontSize: 13, color: theme.subtext, marginTop: 4 },
-  clearText: { color: theme.danger, fontSize: 13, marginTop: 8 },
+  title: { fontSize: 26, fontWeight: "900", color: theme.text, letterSpacing: -0.5 },
+  subtitle: { fontSize: 13, color: theme.subtext, marginTop: 2 },
+  clearText: { color: theme.danger, fontSize: 14, fontWeight: "600" },
   filterRow: { marginBottom: 10 },
   filterChip: {
-    borderWidth: 1, borderColor: theme.border,
-    borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6,
-    marginRight: 8, backgroundColor: theme.surface,
+    borderWidth: 1, borderColor: theme.border, borderRadius: 20,
+    paddingHorizontal: 14, paddingVertical: 7, marginRight: 8,
   },
   filterText: { fontSize: 12, fontWeight: "600" },
   emptyBox: { alignItems: "center", marginTop: 60 },
   emptyIcon: { fontSize: 48, marginBottom: 12 },
-  emptyText: { fontSize: 18, color: theme.text, fontWeight: "bold", marginBottom: 6 },
+  emptyText: { fontSize: 18, fontWeight: "700", color: theme.text, marginBottom: 6 },
   emptySubtext: { fontSize: 14, color: theme.subtext },
   card: {
     backgroundColor: theme.surface, borderRadius: 14,
@@ -255,12 +277,31 @@ const makeStyles = (theme) => StyleSheet.create({
   badgeText: { fontSize: 12, fontWeight: "bold" },
   score: { fontSize: 13, color: theme.subtext },
   shareBtn: {
-    width: 28, height: 28, borderRadius: 14,
-    backgroundColor: theme.accent + "22", borderWidth: 1,
-    borderColor: theme.accent, alignItems: "center", justifyContent: "center",
+    backgroundColor: theme.accent, borderRadius: 20,
+    width: 32, height: 32, alignItems: "center", justifyContent: "center",
   },
-  shareIcon: { color: theme.accent, fontWeight: "bold", fontSize: 14 },
-  inputText: { fontSize: 14, color: theme.text, marginBottom: 6 },
-  reason: { fontSize: 13, color: theme.subtext, lineHeight: 18, marginBottom: 8 },
+  shareIcon: { color: "#fff", fontSize: 16, fontWeight: "bold" },
+  inputText: { fontSize: 14, fontWeight: "600", color: theme.text, marginBottom: 4 },
+  reason: { fontSize: 13, color: theme.subtext, lineHeight: 19, marginBottom: 6 },
   date: { fontSize: 11, color: theme.subtext },
+
+  // Share card styles (captured as image)
+  shareCard: {
+    position: "absolute",
+    left: -9999,
+    width: 360,
+    backgroundColor: "#1c1c1e",
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+  shareCardImage: { width: "100%", height: 220 },
+  shareCardBody: { padding: 16 },
+  shareCardBrand: { color: "#ffffff", fontSize: 14, fontWeight: "700", marginBottom: 10, opacity: 0.7 },
+  shareCardBadge: {
+    borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6,
+    alignSelf: "flex-start", marginBottom: 12,
+  },
+  shareCardBadgeText: { color: "#fff", fontWeight: "bold", fontSize: 15 },
+  shareCardReason: { color: "#ffffff", fontSize: 13, lineHeight: 20, marginBottom: 10 },
+  shareCardDate: { color: "rgba(255,255,255,0.5)", fontSize: 11 },
 });
