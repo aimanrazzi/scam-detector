@@ -12,7 +12,6 @@ import { translations } from "../utils/translations";
 import { useAuth } from "../context/AuthContext";
 import { db } from "../firebase";
 import { collection, query, orderBy, getDocs, deleteDoc, doc } from "firebase/firestore";
-import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import * as Clipboard from "expo-clipboard";
 
@@ -77,24 +76,15 @@ export default function HistoryScreen() {
 
     try {
       if (item.localImagePath) {
-        const fileInfo = await FileSystem.getInfoAsync(item.localImagePath);
-        if (fileInfo.exists) {
-          const canShare = await Sharing.isAvailableAsync();
-          if (canShare) {
-            // Copy text to clipboard so user can paste as caption
-            await Clipboard.setStringAsync(text);
-            Alert.alert(
-              "Analysis copied!",
-              "The scan result text has been copied to your clipboard. After selecting where to share the image, paste it as a caption.",
-              [{ text: "OK", onPress: async () => {
-                await Sharing.shareAsync(item.localImagePath, {
-                  mimeType: "image/jpeg",
-                  dialogTitle: "Share Scan Screenshot",
-                });
-              }}]
-            );
-            return;
-          }
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          // Copy text to clipboard silently, then open image share
+          await Clipboard.setStringAsync(text);
+          await Sharing.shareAsync(item.localImagePath, {
+            mimeType: "image/jpeg",
+            dialogTitle: "Analysis copied — paste as caption after sharing",
+          });
+          return;
         }
       }
       await Share.share({ message: text });
