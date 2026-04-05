@@ -226,8 +226,9 @@ export default function HomeScreen({ embedded = false }) {
       setReportedByUser(true);
       setResult(prev => ({ ...prev, reportCount: (prev.reportCount || 0) + 1 }));
       Alert.alert("Thank you!", "Your report helps protect other users.");
-    } catch {
-      Alert.alert("Error", "Could not submit report. Please try again.");
+    } catch (e) {
+      console.error("Report error:", e);
+      Alert.alert("Error", e?.message || "Could not submit report. Please try again.");
     }
   };
 
