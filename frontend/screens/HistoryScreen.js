@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef } from "react";
 import {
   StyleSheet, Text, View, ScrollView,
-  TouchableOpacity, Alert, Share, Image,
+  TouchableOpacity, Alert, Share, Image, Animated,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -13,7 +13,7 @@ import { useAuth } from "../context/AuthContext";
 import { db } from "../firebase";
 import { collection, query, orderBy, getDocs, deleteDoc, doc } from "firebase/firestore";
 import * as Sharing from "expo-sharing";
-import { captureRef } from "react-native-view-shot";
+import * as Clipboard from "expo-clipboard";
 
 const STATUS_FILTERS = ["ALL", "SAFE", "SUSPICIOUS", "SCAM"];
 
@@ -25,9 +25,16 @@ export default function HistoryScreen() {
   const [history, setHistory] = useState([]);
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [dateFilter, setDateFilter] = useState("ALL");
-  const [sharingItem, setSharingItem] = useState(null);
-  const shareCardRef = useRef(null);
+  const toastAnim = useRef(new Animated.Value(0)).current;
   const styles = makeStyles(theme);
+
+  const showToast = () => {
+    Animated.sequence([
+      Animated.timing(toastAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
+      Animated.delay(2000),
+      Animated.timing(toastAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
+    ]).start();
+  };
 
   useFocusEffect(useCallback(() => { loadHistory(); }, [loadHistory]));
 
@@ -67,30 +74,29 @@ export default function HistoryScreen() {
   };
 
   const shareItem = async (item) => {
-    const fallbackText =
+    const text =
       `🛡️ ScamShield Result\n\n` +
       `Status: ${item.status} — ${item.score}/100\n` +
       `${item.reason}\n\n` +
       `Checked on: ${formatDate(item.date)}`;
 
     try {
-      setSharingItem(item);
-      // Wait for the share card to render
-      await new Promise(resolve => setTimeout(resolve, 200));
-      const uri = await captureRef(shareCardRef, { format: "jpg", quality: 0.92 });
-      setSharingItem(null);
-      const canShare = await Sharing.isAvailableAsync();
-      if (canShare) {
-        await Sharing.shareAsync(uri, {
-          mimeType: "image/jpeg",
-          dialogTitle: "Share Scan Result",
-        });
-        return;
+      if (item.localImagePath) {
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Clipboard.setStringAsync(text);
+          showToast();
+          await Sharing.shareAsync(item.localImagePath, {
+            mimeType: "image/jpeg",
+            dialogTitle: "Share Scan Result",
+          });
+          return;
+        }
       }
+      await Share.share({ message: text });
     } catch {
-      setSharingItem(null);
+      await Share.share({ message: text });
     }
-    await Share.share({ message: fallbackText });
   };
 
   const getStatusColor = (status) => {
@@ -220,28 +226,10 @@ export default function HistoryScreen() {
         )}
       </ScrollView>
 
-      {/* Hidden share card — captured as image when sharing */}
-      {sharingItem && (
-        <View ref={shareCardRef} collapsable={false} style={styles.shareCard}>
-          {sharingItem.localImagePath && (
-            <Image
-              source={{ uri: sharingItem.localImagePath }}
-              style={styles.shareCardImage}
-              resizeMode="cover"
-            />
-          )}
-          <View style={styles.shareCardBody}>
-            <Text style={styles.shareCardBrand}>🛡️ ScamShield</Text>
-            <View style={[styles.shareCardBadge, { backgroundColor: getStatusColor(sharingItem.status) }]}>
-              <Text style={styles.shareCardBadgeText}>
-                {getStatusIcon(sharingItem.status)} {sharingItem.status} — {sharingItem.score}/100
-              </Text>
-            </View>
-            <Text style={styles.shareCardReason}>{sharingItem.reason}</Text>
-            <Text style={styles.shareCardDate}>Checked on: {formatDate(sharingItem.date)}</Text>
-          </View>
-        </View>
-      )}
+      {/* Toast notification */}
+      <Animated.View style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }]}>
+        <Text style={styles.toastText}>📋 Analysis copied — paste as caption</Text>
+      </Animated.View>
     </SafeAreaView>
   );
 }
@@ -285,23 +273,11 @@ const makeStyles = (theme) => StyleSheet.create({
   reason: { fontSize: 13, color: theme.subtext, lineHeight: 19, marginBottom: 6 },
   date: { fontSize: 11, color: theme.subtext },
 
-  // Share card styles (captured as image)
-  shareCard: {
-    position: "absolute",
-    left: -9999,
-    width: 360,
-    backgroundColor: "#1c1c1e",
-    borderRadius: 16,
-    overflow: "hidden",
+  toast: {
+    position: "absolute", bottom: 100, alignSelf: "center",
+    backgroundColor: "#1c1c1e", paddingHorizontal: 18, paddingVertical: 10,
+    borderRadius: 20, shadowColor: "#000", shadowOpacity: 0.3, shadowRadius: 8,
+    elevation: 6,
   },
-  shareCardImage: { width: "100%", height: 220 },
-  shareCardBody: { padding: 16 },
-  shareCardBrand: { color: "#ffffff", fontSize: 14, fontWeight: "700", marginBottom: 10, opacity: 0.7 },
-  shareCardBadge: {
-    borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6,
-    alignSelf: "flex-start", marginBottom: 12,
-  },
-  shareCardBadgeText: { color: "#fff", fontWeight: "bold", fontSize: 15 },
-  shareCardReason: { color: "#ffffff", fontSize: 13, lineHeight: 20, marginBottom: 10 },
-  shareCardDate: { color: "rgba(255,255,255,0.5)", fontSize: 11 },
+  toastText: { color: "#fff", fontSize: 13, fontWeight: "600" },
 });
