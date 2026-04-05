@@ -139,16 +139,16 @@ export default function HomeScreen({ embedded = false }) {
         };
 
         // Save image to local file system if scan used a screenshot
-        if (image?.base64) {
+        if (image?.uri) {
           try {
             const dir = FileSystem.documentDirectory + "scan_images/";
             await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
             const path = dir + `${Date.now()}.jpg`;
-            await FileSystem.writeAsStringAsync(path, image.base64, {
-              encoding: FileSystem.EncodingType.Base64,
-            });
+            await FileSystem.copyAsync({ from: image.uri, to: path });
             entry.localImagePath = path;
-          } catch {}
+          } catch (e) {
+            console.warn("Image save failed:", e);
+          }
         }
 
         if (user) {
