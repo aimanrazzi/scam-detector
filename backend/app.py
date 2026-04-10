@@ -22,6 +22,63 @@ NUMVERIFY_API_KEY = os.getenv("NUMVERIFY_API_KEY")
 SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")
 
+# ── BNM Financial Consumer Alert List ────────────────────
+# Source: OpenSanctions mirror of BNM's official alert list (updated daily)
+# Contains ~1,170 unauthorized companies, websites, and individuals in Malaysia
+BNM_ALERT_ENTITIES = []   # list of lowercase entity name strings
+
+def _load_bnm_alert_list():
+    try:
+        # Try BNM's own API first (requires Accept header)
+        resp = requests.get(
+            "https://api.bnm.gov.my/public/consumer-alert",
+            headers={"Accept": "application/vnd.BNM.API.v1+json"},
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            data = resp.json().get("data", [])
+            for item in data:
+                name = item.get("name", "").strip()
+                if name:
+                    BNM_ALERT_ENTITIES.append(name.lower())
+            print(f"[BNM] Loaded {len(BNM_ALERT_ENTITIES)} entities from BNM API.")
+            return
+    except Exception:
+        pass
+
+    # Fallback: OpenSanctions CSV mirror
+    try:
+        resp = requests.get(
+            "https://data.opensanctions.org/datasets/latest/my_bnm_alert_list/targets.simple.csv",
+            timeout=15,
+        )
+        if resp.status_code == 200:
+            import csv, io
+            reader = csv.DictReader(io.StringIO(resp.text))
+            for row in reader:
+                name = row.get("name", "").strip()
+                if name:
+                    BNM_ALERT_ENTITIES.append(name.lower())
+            print(f"[BNM] Loaded {len(BNM_ALERT_ENTITIES)} entities from OpenSanctions fallback.")
+            return
+    except Exception:
+        pass
+
+    print("[BNM] Could not load alert list — BNM check will be skipped.")
+
+_load_bnm_alert_list()
+
+
+def check_bnm_alert(text):
+    """Return matched entity name if input contains a BNM-listed entity, else None."""
+    if not BNM_ALERT_ENTITIES:
+        return None
+    text_lower = text.lower()
+    for entity in BNM_ALERT_ENTITIES:
+        if len(entity) >= 5 and entity in text_lower:
+            return entity
+    return None
+
 
 LANG_NAMES = {
     "en": "English",
@@ -952,6 +1009,12 @@ def analyze():
             else:
                 findings.append(f"✅ @{handle} ({platform}) — no scam reports found online.")
 
+        # BNM Financial Consumer Alert — max +30, hard override ≥ 80
+        bnm_match = check_bnm_alert(text)
+        if bnm_match:
+            external_score += 30
+            findings.append(f"🚨 '{bnm_match.title()}' is listed on BNM's Financial Consumer Alert as an unauthorised entity.")
+
         # Legitimacy signals — reduce external score
         if detected_url:
             try:
@@ -986,6 +1049,10 @@ def analyze():
         if (url_result and url_result.get("malicious", 0) >= 3) or \
            (ip_result and ip_result.get("malicious", 0) >= 3):
             final_score = max(final_score, 75)
+
+        # BNM-listed entity → force ≥ 80
+        if bnm_match:
+            final_score = max(final_score, 80)
 
         # Final clamp and status
         final_score = min(100, max(0, final_score))
