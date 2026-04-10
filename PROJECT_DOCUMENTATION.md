@@ -53,14 +53,45 @@ Most people encounter suspicious messages, unknown phone numbers, or unusual lin
 
 | Feature | Description |
 |---|---|
-| Text Analysis | Paste any suspicious text — phone, URL, message, bank account, email, social handle |
+| Text Analysis | Paste any suspicious text — phone number, URL, message, bank account, email, or social handle |
 | Screenshot Analysis | Upload or photograph a suspicious message for AI vision analysis |
-| QR Code Scanner | Scan a QR code to check the embedded URL |
-| Profile Checker | Detect AI-generated photos, stock photos, or public figure impersonation |
+| QR Code Scanner | Point the camera at any QR code to extract and scan its embedded URL instantly |
+| Profile Checker | Upload a profile photo to detect AI-generated faces, stock photos, or public figure impersonation |
 | Scan History | All scans saved to cloud (Firebase) or locally — filterable by status and date |
-| Community Reports | Users flag confirmed scams; community warning shown on repeat scans |
+| Community Reports | Users flag confirmed scams; warning shown on repeat scans of the same input |
 | Multi-language | English, Bahasa Malaysia, Chinese (Simplified), Tamil |
 | Dark / Light Theme | Full theme toggle across all screens |
+
+### QR Code Scanner — How It Works
+
+The QR Scanner uses the device camera via `expo-camera` to continuously scan for QR codes. When a QR code is detected:
+
+1. The embedded URL is extracted from the QR code data
+2. The URL is sent to the backend `/analyze` endpoint (same as text input)
+3. Backend runs: AI analysis + VirusTotal URL check + safe domain check
+4. Result returned: score, status, reason, and findings
+
+This catches malicious QR codes used in phishing attacks — a common scam method where a fake QR code redirects to a credential-stealing website.
+
+### Profile Checker — How It Works
+
+The Profile Checker is designed to help users verify profile photos sent by strangers (e.g. on dating apps, WhatsApp, Telegram). The user uploads the photo, and the backend:
+
+1. Resizes the image to 512×512 (to reduce token usage)
+2. Sends to Groq Vision (`llama-4-scout`) with a detailed prompt
+3. AI detects: AI-generated faces, stock photos, public figure impersonation, visible social handles
+4. Backend applies score adjustments based on what was detected
+5. Returns a verdict with specific findings
+
+**Profile Checker verdicts:**
+
+| Finding | Score Effect | Status |
+|---|---|---|
+| Public figure identified by name | Score forced to 90 | SCAM — impersonation warning shown |
+| AI-generated photo detected | +15 added, if ≥70 | SCAM |
+| Stock photo detected | Score capped at 60 | SUSPICIOUS |
+| Real person selfie | Score −20 applied | SAFE (if score < 31) |
+| Non-person image (cartoon, object) | Rejected | Error returned |
 
 ### How it solves the problem
 
@@ -232,28 +263,89 @@ Groq's inference hardware delivers sub-second response times on large language m
 
 ### Database (Firebase Firestore)
 
+#### How data is stored depends on whether the user is signed in:
+
+| User Type | Storage Location | Persistence |
+|---|---|---|
+| Signed in (email / Google) | Firebase Firestore — cloud database | Permanent, synced across devices |
+| Guest (not signed in) | AsyncStorage — local device only | Lost if app is uninstalled, max 50 entries |
+
+#### Firestore Structure
+
 ```
 Firestore
-├── scans/
-│   └── {userUID}/
-│       └── entries/{autoID}
-│           ├── input           — original text or "[Screenshot]"
-│           ├── status          — "SAFE" | "SUSPICIOUS" | "SCAM"
-│           ├── score           — integer 0–100
-│           ├── reason          — one-line AI summary
-│           ├── date            — ISO 8601 timestamp
-│           └── localImagePath  — device file URI (image scans only)
 │
-└── reports/{inputKey}
-    ├── input                   — original input text
-    ├── count                   — total reports
-    ├── reportedBy              — array of UIDs (prevents duplicate reports)
-    └── lastReportedAt          — ISO 8601 timestamp
+├── scans/
+│   └── {userUID}/                        ← one document per user (by Firebase UID)
+│       └── entries/
+│           └── {autoID}                  ← one document per scan
+│               ├── input                 — original text or "[Screenshot]"
+│               ├── status                — "SAFE" | "SUSPICIOUS" | "SCAM"
+│               ├── score                 — integer 0–100
+│               ├── reason                — one-line AI summary
+│               ├── date                  — ISO 8601 timestamp (e.g. "2026-04-11T10:30:00.000Z")
+│               └── localImagePath        — device file URI (image scans only, not synced)
+│
+└── reports/
+    └── {inputKey}                        ← document ID = normalized input text
+        ├── input                         — original input text
+        ├── count                         — total number of community reports
+        ├── reportedBy                    — array of UIDs who reported (prevents duplicates)
+        └── lastReportedAt                — ISO 8601 timestamp of most recent report
 ```
 
-**Firestore Security Rules:**
-- Users can only read/write their own scan history (`/scans/{uid}/entries/*` requires `auth.uid == uid`)
-- Anyone can read report counts (needed before scan), only signed-in users can write
+#### How scan history is saved (step by step)
+
+1. User submits input → app calls backend `/analyze`
+2. Backend returns: `{ score, status, reason, findings, ... }`
+3. App receives result and immediately saves a scan record to:
+   - **Firestore** (if signed in): `scans/{uid}/entries/{autoID}` via `addDoc()`
+   - **AsyncStorage** (if guest): array stored under key `"scan_history"`, limited to 50 entries
+4. History screen reads the data back on every tab focus using `useFocusEffect`
+
+#### How community reports work
+
+1. After a scan result, a **Report as Scam** button appears (signed-in users only)
+2. Tapping it writes to `reports/{inputKey}` in Firestore:
+   - If document doesn't exist: creates it with `count: 1`, `reportedBy: [uid]`
+   - If document exists: increments `count`, appends `uid` to `reportedBy`
+3. Before each scan, the app queries `reports/{inputKey}` to get the current count
+4. If count ≥ 1, a warning is shown alongside the AI result:
+   - 1–4 reports: amber warning "X users reported this as suspicious"
+   - 5+ reports: red warning "X users flagged this as a scam — high risk"
+
+#### Firestore Security Rules
+
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users can only read/write their own scan history
+    match /scans/{uid}/entries/{entry} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Reports — anyone can read (needed to check count before scan)
+    // Only signed-in users can write (prevents anonymous spam)
+    match /reports/{key} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+  }
+}
+```
+
+#### Guest vs Signed-in comparison
+
+| Feature | Guest | Signed In |
+|---|---|---|
+| Scan history saved | Yes (device only) | Yes (cloud) |
+| History on another device | No | Yes |
+| History after reinstall | No | Yes |
+| Community reports | Cannot report | Can report |
+| Max history entries | 50 | Unlimited |
+| Data security | Device storage only | Firestore with UID-scoped rules |
 
 ---
 
@@ -261,41 +353,242 @@ Firestore
 
 ### Score Ranges
 
-| Score | Status | Meaning |
-|---|---|---|
-| 0 – 30 | SAFE | Low risk |
-| 31 – 69 | SUSPICIOUS | Needs caution |
-| 70 – 100 | SCAM | High risk — do not proceed |
+| Score | Status | Colour | Meaning |
+|---|---|---|---|
+| 0 – 30 | SAFE | Green | Low risk — likely legitimate |
+| 31 – 69 | SUSPICIOUS | Amber | Proceed with caution — some risk indicators found |
+| 70 – 100 | SCAM | Red | High risk — do not proceed, likely a scam |
 
-### Calculation Steps
+### Final Score Formula
+
+```
+Final Score = (AI Base Score × 0.5) + (External Signals Score × 0.5)
+```
+
+The AI and external APIs each contribute 50% to the final score. Neither alone decides the result — both must agree for a high or low score. After the formula, hard overrides can force the score higher if confirmed scam signals are found.
+
+---
+
+### Step-by-Step Calculation
 
 **Step 1 — Groq AI Base Score (0–100)**
-The AI reads the full input and returns a base score based on Malaysian scam pattern recognition. Patterns include: Macau scam, government impersonation, fake jobs, investment scams, parcel scams, love scams, bank impersonation.
 
-**Step 2 — VirusTotal URL Check**
-If a URL is detected: submitted to VirusTotal. If flagged by any security vendor → **+20** to score.
+The AI reads the full input text and returns a base score from 0–100 based on Malaysian scam pattern recognition. The AI is instructed with the following patterns:
 
-**Step 3 — VirusTotal IP Check**
-If an IP address is detected: checked against VirusTotal. If flagged → **+20** to score.
+*SCAM patterns (score 75–100):*
+- Macau scam — impersonating police (PDRM), SPRM, kastam, mahkamah, or government officers
+- Government impersonation — fake LHDN tax refund/debt, fake JPJ summons, fake SSM notice
+- Bank impersonation — fake Maybank2u, CIMB, RHB alerts asking to verify account or click a link
+- Fake job offers — unrealistic salary (RM3,000–8,000 work-from-home), no interview, upfront fees or IC copy required
+- Love/romance scam — overseas person (army officer, doctor, engineer) requesting money transfer
+- Investment scam — guaranteed high returns, forex/crypto/gold, passive income, MLM structure
+- Parcel/courier scam — fake Pos Laju, J&T, DHL, Ninja Van notifications with suspicious links
+- Lucky draw / prize scam — "tahniah anda terpilih", "anda menang hadiah", claim via link or upfront transfer
+- Loan scam — instant approval, no credit check, processing fee required upfront
+- E-commerce scam — seller asking payment outside Shopee/Lazada
 
-**Step 4 — Semak Mule (PDRM)**
-If a phone number, bank account, or email is detected: queried against PDRM's Semak Mule database.
+*SUSPICIOUS patterns (score 40–74):*
+- Urgency language: "segera", "dalam masa 24 jam", "akaun anda akan dibekukan"
+- Requests for OTP, TAC code, or online banking password
+- Government or bank business conducted via WhatsApp or Telegram
+- Vague job or investment offer with no verifiable company details
 
-| Reports Found | Score Boost | Hard Minimum |
+**Step 2 — VirusTotal URL Check (+0 to +25)**
+
+If a URL is detected in the input, it is submitted to VirusTotal for analysis across 70+ security vendor engines.
+
+- If flagged by any vendor: `+10 + (malicious_count × 3)`, capped at **+25**
+- If 3 or more vendors flag it as malicious: hard override forces score ≥ 75 (SCAM)
+
+**Step 3 — VirusTotal IP Check (+0 to +25)**
+
+If an IP address is detected (and no URL was found), it is checked against VirusTotal's IP reputation database.
+
+- Same boost formula as URL: `+10 + (malicious_count × 3)`, capped at **+25**
+
+**Step 4 — PDRM Semak Mule Check (+0 to +60, with hard overrides)**
+
+If a phone number, bank account number, or email address is detected, it is queried against PDRM's official Semak Mule scam database.
+
+| Reports in Semak Mule | Score Boost | Hard Minimum Score |
 |---|---|---|
-| 1 report | +20 | Score forced ≥ 75 (SCAM) |
-| 2 reports | +40 | Score forced ≥ 85 |
-| 3+ reports | +60 | Score forced ≥ 92 |
+| 1 report | +20 | Forced ≥ 75 (SCAM) |
+| 2 reports | +40 | Forced ≥ 85 |
+| 3+ reports | +60 | Forced ≥ 92 |
 
-**Why hard override?** Semak Mule is PDRM's official scam database. If a number is registered there, it has already been reported as a scam by real victims. There is no false positive — a confirmed scam must always return SCAM.
+**Why hard overrides?** Semak Mule is PDRM's official scam database — entries are reported by real Malaysian scam victims. A number in Semak Mule is confirmed scam evidence. The formula alone (50/50 split) could produce a borderline score if the AI gave a low base — so we override to guarantee SCAM status for any registered number.
 
-**Step 5 — Phone Baseline Rule**
-If the input is a bare phone number and AI score < 25: raise to 25 and add note *"Cannot determine safety from number alone."* The number alone isn't enough evidence — external checks decide.
+**Step 5 — Phone Number Baseline Rule**
 
-**Step 6 — Social Handle Check (SerpAPI)**
-If a social media handle is detected (`@username` or `platform.com/username`): SerpAPI searches for `"@handle" scam OR fraud OR penipu`. If scam-related results found → **+15 per result, up to +40**.
+If the input is a bare phone number with no other context and AI score < 25: score is raised to **25** and a note is added: *"Phone number detected — cannot determine safety from number alone."*
 
-**Final sync:** After all steps, status is always re-derived from the final score to ensure consistency.
+The AI cannot judge a plain phone number by itself. External checks (Semak Mule, NumVerify) must inform the result. This prevents false SAFE verdicts on unknown numbers.
+
+**Step 6 — Social Handle Check (+0 to +15)**
+
+If a social media handle is detected (`@username` or `platform.com/username`): SerpAPI performs a Google search:
+
+```
+"@handle" platform scam OR penipu OR fraud OR fake
+```
+
+- If scam-related results are found: **+5 per result**, capped at **+15**
+- Findings from search results are added to the output
+
+**Legitimacy Signals (score reduction)**
+
+If a recognised safe domain is detected (e.g. `google.com`, `maybank.com`, `gov.my`): **−20** from external score.
+
+If a valid phone number is found (via NumVerify) with no Semak Mule reports: **−10** from external score.
+
+---
+
+### Actual Groq AI Prompts Used
+
+**Text Analysis Prompt** (sent to `llama-3.3-70b-versatile`):
+
+```
+You are a scam and fraud detection assistant specialising in Malaysian scams.
+
+The user has submitted the following input for you to analyse:
+"""[USER INPUT]"""
+
+Your job is to extract the actual content being referred to (a phone number, URL, message,
+job offer, IP address, etc.) and analyse THAT for scam indicators.
+
+General rules:
+- Ignore spelling or grammar errors made by the person submitting — they may just be typing quickly.
+- Focus only on whether the content itself shows signs of being a scam.
+- A phone number alone is not a scam unless there is other suspicious context.
+
+Malaysian scam patterns — score 75 to 100 if any of these are detected:
+- Macau scam: someone claiming to be polis, SPRM, kastam, mahkamah, or any government officer
+  asking for money or bank details
+- Government impersonation: fake LHDN/Hasil tax refund or debt, fake JPJ summons, fake SSM notice
+- Bank impersonation: fake Maybank2u, CIMB Clicks, RHB, Public Bank alerts asking to verify
+  account or click a link
+- Fake job offers: unrealistic salary (RM3000–8000 kerja dari rumah), no interview, asks for
+  upfront fees or IC copy
+- Love/romance scam: overseas person (army officer, doctor, engineer) building relationship
+  then requesting money transfer
+- Investment scam: guaranteed high returns, forex/crypto/gold schemes, passive income, MLM
+- Parcel/courier scam: fake Pos Laju, J&T, DHL, Ninja Van notifications with suspicious links
+- Lucky draw / prize scam: "tahniah anda terpilih", "anda menang hadiah"
+- Loan scam: instant approval, no credit check, processing fee required upfront
+- E-commerce scam: seller asking payment outside Shopee/Lazada, fake buyer overpaying
+
+Suspicious patterns — score 40 to 74:
+- Urgency language: "segera", "dalam masa 24 jam", "akaun anda akan dibekukan"
+- Requests for OTP, TAC code, or online banking password
+- Government or bank business conducted via WhatsApp or Telegram
+- Vague job or investment offer with no verifiable company details
+
+Respond ONLY in this exact JSON format with no extra text:
+{
+  "score": <number from 0 to 100>,
+  "status": "<SAFE or SUSPICIOUS or SCAM>",
+  "reason": "<one clear sentence summary of the verdict>",
+  "findings": ["<finding 1>", "<finding 2>", "<finding 3>"]
+}
+
+Scoring guide:
+- 0 to 30 = SAFE
+- 31 to 69 = SUSPICIOUS
+- 70 to 100 = SCAM
+
+Respond with "reason" and all "findings" in [USER SELECTED LANGUAGE].
+```
+
+**Screenshot / Image Analysis Prompt** (sent to `meta-llama/llama-4-scout-17b-16e-instruct`):
+
+```
+You are a scam and fraud detection assistant.
+Analyze this screenshot for any scam indicators — suspicious messages, phishing links,
+fake offers, urgent requests, or fraud.
+
+Respond ONLY in this exact JSON format with no extra text:
+{
+  "score": <number from 0 to 100>,
+  "status": "<SAFE or SUSPICIOUS or SCAM>",
+  "reason": "<one clear sentence summary of the verdict>",
+  "findings": ["<finding 1>", "<finding 2>", "<finding 3>"]
+}
+
+Scoring guide:
+- 0 to 30 = SAFE
+- 31 to 69 = SUSPICIOUS
+- 70 to 100 = SCAM
+
+Respond with "reason" and all "findings" in [USER SELECTED LANGUAGE].
+```
+
+**Profile Photo Analysis Prompt** (sent to `meta-llama/llama-4-scout-17b-16e-instruct`):
+
+```
+You are a scam detection assistant analyzing a profile photo.
+
+FIRST — determine if this image contains a real human person (face OR body).
+If the image contains NO human person at all (cartoon, anime, game character, artwork,
+screenshot of text, meme, logo, animal, building, landscape with no person, or object),
+respond with status: "INVALID".
+
+KEY RULE — Background analysis:
+- A REAL selfie background, even when blurred, shows identifiable real-world elements:
+  furniture shapes, wall colors, trees, streets, people, windows, etc.
+- An AI-generated portrait background is a perfectly uniform, featureless blur or gradient —
+  no identifiable location, no shapes. This is a strong AI indicator.
+
+Strong AI-generated signs:
+- Perfectly featureless blurred background
+- Skin is flawless with zero pores or blemishes
+- Hair is impossibly perfect with every strand rendered uniformly
+- Unnaturally perfect facial symmetry
+- Perfectly even lighting from all directions
+
+Stock photo signs:
+- Professional studio lighting against a plain solid background
+- Subject poses like a commercial model
+
+Real person selfie signs (score low):
+- Background shows a real place even if slightly blurry
+- Candid or casual pose
+- Natural, directional lighting
+- Minor skin imperfections, natural hair
+
+Also look for any visible social media username in the image.
+Also check: Is this person a well-known public figure or celebrity?
+
+Respond ONLY in this JSON format:
+{
+  "score": <0 to 100>,
+  "status": "<SAFE or SUSPICIOUS or SCAM or INVALID>",
+  "reason": "<one sentence>",
+  "ai_generated": <true or false>,
+  "looks_like_stock": <true or false>,
+  "detected_handle": "<@username if visible, or null>",
+  "detected_platform": "<platform name, or null>",
+  "known_person": "<full name if public figure, or null>",
+  "known_person_type": "<Singer/Actor/etc, or null>",
+  "findings": ["<finding 1>", "<finding 2>", "<finding 3>"]
+}
+
+Scoring guide:
+- 0 to 30 = SAFE (genuine real person photo)
+- 31 to 69 = SUSPICIOUS (ambiguous, some signs)
+- 70 to 100 = SCAM (AI-generated or stock photo)
+```
+
+---
+
+### Profile Checker Score Adjustments (applied after AI response)
+
+| AI Returns | Score Effect |
+|---|---|
+| `ai_generated: true` | +15 added to score; if ≥70 → status forced SCAM |
+| `looks_like_stock: true` | Score capped at 60; status forced SUSPICIOUS |
+| Neither (real selfie) | −20 applied to score; if <31 → status forced SAFE |
+| `known_person` identified | Score forced to 90; status forced SCAM; impersonation warning shown |
+| `status: INVALID` (no person) | Request rejected with error message |
 
 ---
 
