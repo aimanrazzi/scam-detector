@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { View, ActivityIndicator } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { NavigationContainer, DefaultTheme } from "@react-navigation/native";
+import { NavigationContainer, DarkTheme } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -22,6 +21,14 @@ import SplashScreen from "./screens/SplashScreen";
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
+// Deep purple — matches gradient start so transitions look seamless
+const BG = "#12072a";
+
+const navTheme = {
+  ...DarkTheme,
+  colors: { ...DarkTheme.colors, background: BG, card: BG },
+};
+
 const TABS = [
   { name: "Home",      icon: "shield-checkmark-outline", component: MainScreen,      label: "Check"     },
   { name: "History",   icon: "time-outline",             component: HistoryScreen,   label: "History"   },
@@ -33,14 +40,14 @@ const TABS = [
 function AppTabs() {
   return (
     <Tab.Navigator
-      sceneContainerStyle={{ backgroundColor: "transparent" }}
+      sceneContainerStyle={{ backgroundColor: BG }}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarShowLabel: true,
         tabBarActiveTintColor: "#a78bfa",
         tabBarInactiveTintColor: "rgba(255,255,255,0.35)",
         tabBarLabelStyle: { fontSize: 10, fontWeight: "600", marginTop: 2 },
-        tabBarIcon: ({ focused, color, size }) => {
+        tabBarIcon: ({ color }) => {
           const tab = TABS.find(t => t.name === route.name);
           return <Ionicons name={tab.icon} size={22} color={color} />;
         },
@@ -71,7 +78,12 @@ function AppTabs() {
 
 function AppStack() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "transparent" } }}>
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: BG },
+      }}
+    >
       <Stack.Screen name="Tabs" component={AppTabs} />
       <Stack.Screen
         name="Account"
@@ -79,7 +91,7 @@ function AppStack() {
         options={{
           animation: "slide_from_right",
           presentation: "transparentModal",
-          contentStyle: { marginLeft: "14%", borderTopLeftRadius: 24, overflow: "hidden" },
+          contentStyle: { backgroundColor: BG, marginLeft: "14%", borderTopLeftRadius: 24, overflow: "hidden" },
         }}
       />
     </Stack.Navigator>
@@ -88,7 +100,6 @@ function AppStack() {
 
 function AppRoot() {
   const { user, loading } = useAuth();
-  const { theme } = useTheme();
   const [splashDone, setSplashDone] = useState(false);
 
   if (!splashDone) {
@@ -97,7 +108,7 @@ function AppRoot() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#12072a" }}>
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: BG }}>
         <ActivityIndicator size="large" color="#a78bfa" />
       </View>
     );
@@ -105,17 +116,10 @@ function AppRoot() {
 
   if (!user) return <LoginScreen />;
 
-  const navTheme = {
-    ...DefaultTheme,
-    colors: { ...DefaultTheme.colors, background: "transparent" },
-  };
-
   return (
-    <LinearGradient colors={["#12072a", "#3b1080", "#6d28d9"]} style={{ flex: 1 }}>
-      <NavigationContainer theme={navTheme}>
-        <AppStack />
-      </NavigationContainer>
-    </LinearGradient>
+    <NavigationContainer theme={navTheme}>
+      <AppStack />
+    </NavigationContainer>
   );
 }
 
