@@ -42,6 +42,7 @@ export default function HomeScreen({ embedded = false }) {
   const slowTimer = useRef(null);
   const [cacheKey, setCacheKey] = useState(null);
   const [reportedByUser, setReportedByUser] = useState(false);
+  const [fromScamCache, setFromScamCache] = useState(false);
 
   const toCacheKey = (text) => {
     const SUFFIXES = /\b(sdn\.?\s*bhd\.?|sdn\s*bhd|bhd\.?|pte\.?\s*ltd\.?|ltd\.?|inc\.?|llc\.?|corp\.?|berhad|enterprise|trading|services|solutions|group)\b/gi;
@@ -127,11 +128,12 @@ export default function HomeScreen({ embedded = false }) {
     setError(null);
     setCacheKey(null);
     setReportedByUser(false);
+    setFromScamCache(false);
 
     let localCacheKey = null;
     let communityReportCount = 0;
 
-    // Check community reports for text inputs
+    // Check community reports + scam cache for text inputs
     if (inputText.trim() && !image) {
       localCacheKey = toCacheKey(inputText);
       setCacheKey(localCacheKey);
@@ -143,6 +145,26 @@ export default function HomeScreen({ embedded = false }) {
           if (user && reportedBy.includes(user.uid)) {
             setReportedByUser(true);
           }
+        }
+      } catch {}
+
+      // Check scam cache — only SCAM results are cached
+      try {
+        const scamSnap = await getDoc(doc(db, "scam_cache", localCacheKey));
+        if (scamSnap.exists()) {
+          const cached = scamSnap.data();
+          setResult({ ...cached, reportCount: communityReportCount });
+          setFromScamCache(true);
+          setLoading(false);
+          await saveToHistory({
+            input: inputText.trim(),
+            status: cached.status,
+            score: cached.score,
+            reason: cached.reason,
+            date: new Date().toISOString(),
+            localImagePath: null,
+          });
+          return;
         }
       } catch {}
     }
@@ -176,6 +198,20 @@ export default function HomeScreen({ embedded = false }) {
         setError(data.error);
       } else {
         setResult({ ...data, reportCount: communityReportCount });
+
+        // Cache SCAM results permanently for future users
+        if (data.status === "SCAM" && localCacheKey) {
+          try {
+            await setDoc(doc(db, "scam_cache", localCacheKey), {
+              input: inputText.trim(),
+              status: data.status,
+              score: data.score,
+              reason: data.reason,
+              findings: data.findings || [],
+              cachedAt: new Date().toISOString(),
+            });
+          } catch {}
+        }
 
         const entry = {
           input: image ? "[Screenshot]" : inputText.trim(),
@@ -214,6 +250,7 @@ export default function HomeScreen({ embedded = false }) {
     setError(null);
     setCacheKey(null);
     setReportedByUser(false);
+    setFromScamCache(false);
   };
 
   const reportAsScam = async () => {
@@ -393,6 +430,16 @@ export default function HomeScreen({ embedded = false }) {
                   />
                 </View>
               </View>
+
+              {/* Scam cache indicator */}
+              {fromScamCache && (
+                <View style={[styles.semakMuleResult, { backgroundColor: theme.danger + "22", borderColor: theme.danger, marginBottom: 12 }]}>
+                  <Text style={{ fontSize: 16 }}>⚡</Text>
+                  <Text style={[styles.semakMuleResultText, { color: theme.danger }]}>
+                    Previously confirmed scam — instant result
+                  </Text>
+                </View>
+              )}
 
               {/* Community reports warning */}
               {result.reportCount > 0 && (
