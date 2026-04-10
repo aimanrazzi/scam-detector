@@ -21,13 +21,6 @@ import SplashScreen from "./screens/SplashScreen";
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
-// Deep purple — matches gradient start so transitions look seamless
-const BG = "#12072a";
-
-const navTheme = {
-  ...DarkTheme,
-  colors: { ...DarkTheme.colors, background: BG, card: BG },
-};
 
 const TABS = [
   { name: "Home",      icon: "shield-checkmark-outline", component: MainScreen,      label: "Check"     },
@@ -38,21 +31,22 @@ const TABS = [
 ];
 
 function AppTabs() {
+  const { theme } = useTheme();
   return (
     <Tab.Navigator
-      sceneContainerStyle={{ backgroundColor: BG }}
+      sceneContainerStyle={{ backgroundColor: theme.background }}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarShowLabel: true,
-        tabBarActiveTintColor: "#a78bfa",
-        tabBarInactiveTintColor: "rgba(255,255,255,0.35)",
+        tabBarActiveTintColor: theme.accent,
+        tabBarInactiveTintColor: theme.subtext,
         tabBarLabelStyle: { fontSize: 10, fontWeight: "600", marginTop: 2 },
         tabBarIcon: ({ color }) => {
           const tab = TABS.find(t => t.name === route.name);
           return <Ionicons name={tab.icon} size={22} color={color} />;
         },
         tabBarStyle: {
-          backgroundColor: "#1a0a3e",
+          backgroundColor: theme.isDark ? "#1a0a3e" : "#ede9fe",
           borderTopWidth: 0,
           borderRadius: 32,
           marginHorizontal: 12,
@@ -77,11 +71,12 @@ function AppTabs() {
 }
 
 function AppStack() {
+  const { theme } = useTheme();
   return (
     <Stack.Navigator
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: BG },
+        contentStyle: { backgroundColor: theme.background },
       }}
     >
       <Stack.Screen name="Tabs" component={AppTabs} />
@@ -91,7 +86,7 @@ function AppStack() {
         options={{
           animation: "slide_from_right",
           presentation: "transparentModal",
-          contentStyle: { backgroundColor: BG, marginLeft: "14%", borderTopLeftRadius: 24, overflow: "hidden" },
+          contentStyle: { backgroundColor: theme.background, marginLeft: "14%", borderTopLeftRadius: 24, overflow: "hidden" },
         }}
       />
     </Stack.Navigator>
@@ -100,7 +95,13 @@ function AppStack() {
 
 function AppRoot() {
   const { user, loading } = useAuth();
+  const { theme } = useTheme();
   const [splashDone, setSplashDone] = useState(false);
+
+  const navTheme = {
+    ...DarkTheme,
+    colors: { ...DarkTheme.colors, background: theme.background, card: theme.background },
+  };
 
   if (!splashDone) {
     return <SplashScreen onDone={() => setSplashDone(true)} />;
@@ -108,8 +109,8 @@ function AppRoot() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: BG }}>
-        <ActivityIndicator size="large" color="#a78bfa" />
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: theme.background }}>
+        <ActivityIndicator size="large" color={theme.accent} />
       </View>
     );
   }

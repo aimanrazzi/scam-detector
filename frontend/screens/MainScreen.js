@@ -47,8 +47,8 @@ export default function MainScreen({ navigation }) {
   const currentLang = LANGUAGES.find((l) => l.code === lang) || LANGUAGES[0];
 
   return (
-    <LinearGradient colors={["#12072a", "#3b1080", "#6d28d9"]} style={{ flex: 1 }}>
-      <StatusBar barStyle="light-content" />
+    <LinearGradient colors={theme.backgroundGradient} style={{ flex: 1 }}>
+      <StatusBar barStyle={theme.statusBar} />
 
       {/* Top bar */}
       <View style={styles.topBar}>

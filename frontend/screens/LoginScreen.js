@@ -107,8 +107,8 @@ export default function LoginScreen() {
   };
 
   return (
-    <LinearGradient colors={["#12072a", "#3b1080", "#6d28d9"]} style={{ flex: 1 }}>
-      <StatusBar barStyle="light-content" />
+    <LinearGradient colors={theme.backgroundGradient} style={{ flex: 1 }}>
+      <StatusBar barStyle={theme.statusBar} />
       <SafeAreaView style={{ flex: 1 }}>
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}

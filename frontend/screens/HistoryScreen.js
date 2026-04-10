@@ -134,7 +134,7 @@ export default function HistoryScreen() {
   });
 
   return (
-    <LinearGradient colors={["#12072a", "#3b1080", "#6d28d9"]} style={{ flex: 1 }}>
+    <LinearGradient colors={theme.backgroundGradient} style={{ flex: 1 }}>
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
 

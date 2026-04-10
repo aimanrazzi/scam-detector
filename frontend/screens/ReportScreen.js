@@ -71,7 +71,7 @@ export default function ReportScreen() {
   const open = (url) => Linking.openURL(url);
 
   return (
-    <LinearGradient colors={["#12072a", "#3b1080", "#6d28d9"]} style={{ flex: 1 }}>
+    <LinearGradient colors={theme.backgroundGradient} style={{ flex: 1 }}>
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.title}>{t.reportTitle}</Text>
