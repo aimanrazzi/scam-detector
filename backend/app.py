@@ -115,19 +115,35 @@ def resize_image_base64(image_base64, max_size=(512, 512)):
 
 # ── Helper: Analyze text with Groq AI ───────────────────
 def analyze_with_ai(text, lang="en"):
-    prompt = f"""You are a scam and fraud detection assistant.
+    prompt = f"""You are a scam and fraud detection assistant specialising in Malaysian scams.
 
-The user has submitted the following input for you to analyze:
+The user has submitted the following input for you to analyse:
 \"\"\"{text}\"\"\"
 
-Your job is to extract the actual content being referred to (a phone number, URL, message, job offer, IP address, etc.) and analyze THAT for scam indicators.
+Your job is to extract the actual content being referred to (a phone number, URL, message, job offer, IP address, etc.) and analyse THAT for scam indicators.
 
-Important rules:
-- Ignore spelling or grammar errors made by the person submitting the input — they may just be typing quickly.
-- Focus only on whether the content itself (the number, link, message, job offer) shows signs of being a scam.
+General rules:
+- Ignore spelling or grammar errors made by the person submitting — they may just be typing quickly.
+- Focus only on whether the content itself shows signs of being a scam.
 - A phone number alone is not a scam unless there is other suspicious context.
-- A job offer with unrealistic pay, vague details, or requests for personal info upfront is a scam.
-- Phishing links, fake prizes, urgent money requests, and impersonation are scam indicators.
+
+Malaysian scam patterns — score 75 to 100 if any of these are detected:
+- Macau scam: someone claiming to be polis, SPRM, kastam, mahkamah, or any government officer asking for money or bank details
+- Government impersonation: fake LHDN/Hasil tax refund or debt, fake JPJ summons, fake SSM notice
+- Bank impersonation: fake Maybank2u, CIMB Clicks, RHB, Public Bank alerts asking to verify account or click a link
+- Fake job offers: unrealistic salary (RM3000–8000 kerja dari rumah), no interview, asks for upfront fees or IC copy
+- Love/romance scam: overseas person (army officer, doctor, engineer) building relationship then requesting money transfer
+- Investment scam: guaranteed high returns, forex/crypto/gold schemes, passive income, MLM-like structure
+- Parcel/courier scam: fake Pos Laju, J&T, DHL, Ninja Van notifications with suspicious links
+- Lucky draw / prize scam: "tahniah anda terpilih", "anda menang hadiah", claim via link or upfront transfer
+- Loan scam: instant approval, no credit check, processing fee required upfront
+- E-commerce scam: seller asking payment outside Shopee/Lazada, fake buyer overpaying
+
+Suspicious patterns — score 40 to 74:
+- Urgency language: "segera", "dalam masa 24 jam", "akaun anda akan dibekukan", "tindakan undang-undang"
+- Requests for OTP, TAC code, or online banking password
+- Government or bank business conducted via WhatsApp or Telegram
+- Vague job or investment offer with no verifiable company details
 
 Respond ONLY in this exact JSON format with no extra text:
 {{
@@ -137,7 +153,7 @@ Respond ONLY in this exact JSON format with no extra text:
   "findings": ["<finding 1>", "<finding 2>", "<finding 3>"]
 }}
 
-For findings: list 2-4 short bullet points explaining specific indicators found (or not found). Each should be one short sentence.
+For findings: list 2–4 short bullet points explaining specific indicators found (or not found). Each should be one short sentence.
 
 Scoring guide:
 - 0 to 30 = SAFE

@@ -23,7 +23,7 @@ import { translations } from "../utils/translations";
 import LanguageSelector from "../components/LanguageSelector";
 import { useAuth } from "../context/AuthContext";
 import { db } from "../firebase";
-import { collection, addDoc, doc, getDoc, setDoc, increment, arrayUnion } from "firebase/firestore";
+import { collection, addDoc, doc, getDoc, setDoc } from "firebase/firestore";
 
 import { BACKEND_URL } from "../config";
 
@@ -263,12 +263,21 @@ export default function HomeScreen({ embedded = false }) {
       return;
     }
     try {
-      await setDoc(doc(db, "reports", cacheKey), {
+      const reportRef = doc(db, "reports", cacheKey);
+      const snap = await getDoc(reportRef);
+      const existing = snap.exists() ? snap.data() : { count: 0, reportedBy: [] };
+      const alreadyReported = Array.isArray(existing.reportedBy) && existing.reportedBy.includes(user.uid);
+      if (alreadyReported) {
+        setReportedByUser(true);
+        Alert.alert("Already reported", "You have already reported this.");
+        return;
+      }
+      await setDoc(reportRef, {
         input: inputText.trim(),
-        count: increment(1),
-        reportedBy: arrayUnion(user.uid),
+        count: (existing.count || 0) + 1,
+        reportedBy: [...(existing.reportedBy || []), user.uid],
         lastReportedAt: new Date().toISOString(),
-      }, { merge: true });
+      });
       setReportedByUser(true);
       setResult(prev => ({ ...prev, reportCount: (prev.reportCount || 0) + 1 }));
       Alert.alert("Thank you!", "Your report helps protect other users.");
