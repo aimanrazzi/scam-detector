@@ -32,7 +32,6 @@ export default function MainScreen({ navigation }) {
   const [tab, setTab] = useState("check");
   const [langDropdown, setLangDropdown] = useState(false);
   const [serverReady, setServerReady] = useState(false);
-  const styles = makeStyles(theme);
 
   // Ping backend on mount to wake it up before user interacts
   useEffect(() => {
