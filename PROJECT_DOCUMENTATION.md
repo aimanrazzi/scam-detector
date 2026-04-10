@@ -263,12 +263,7 @@ Groq's inference hardware delivers sub-second response times on large language m
 
 ### Database (Firebase Firestore)
 
-#### How data is stored depends on whether the user is signed in:
-
-| User Type | Storage Location | Persistence |
-|---|---|---|
-| Signed in (email / Google) | Firebase Firestore — cloud database | Permanent, synced across devices |
-| Guest (not signed in) | AsyncStorage — local device only | Lost if app is uninstalled, max 50 entries |
+All data is stored in Firebase Firestore. Users must be signed in to use the app — every request to the backend requires a valid Firebase ID token.
 
 #### Firestore Structure
 
@@ -283,8 +278,8 @@ Firestore
 │               ├── status                — "SAFE" | "SUSPICIOUS" | "SCAM"
 │               ├── score                 — integer 0–100
 │               ├── reason                — one-line AI summary
-│               ├── date                  — ISO 8601 timestamp (e.g. "2026-04-11T10:30:00.000Z")
-│               └── localImagePath        — device file URI (image scans only, not synced)
+│               ├── date                  — ISO 8601 timestamp
+│               └── localImagePath        — device file URI (image scans only)
 │
 └── reports/
     └── {inputKey}                        ← document ID = normalized input text
@@ -294,25 +289,23 @@ Firestore
         └── lastReportedAt                — ISO 8601 timestamp of most recent report
 ```
 
-#### How scan history is saved (step by step)
+#### How scan history is saved
 
-1. User submits input → app calls backend `/analyze`
-2. Backend returns: `{ score, status, reason, findings, ... }`
-3. App receives result and immediately saves a scan record to:
-   - **Firestore** (if signed in): `scans/{uid}/entries/{autoID}` via `addDoc()`
-   - **AsyncStorage** (if guest): array stored under key `"scan_history"`, limited to 50 entries
-4. History screen reads the data back on every tab focus using `useFocusEffect`
+1. User submits input → app calls backend `/analyze` with Firebase Bearer token
+2. Backend verifies token, runs analysis, returns result
+3. App saves a scan record to Firestore: `scans/{uid}/entries/{autoID}` via `addDoc()`
+4. History screen reads all entries back on every tab focus using `useFocusEffect`, ordered by date descending
 
 #### How community reports work
 
-1. After a scan result, a **Report as Scam** button appears (signed-in users only)
+1. After a scan result, a **Report as Scam** button appears
 2. Tapping it writes to `reports/{inputKey}` in Firestore:
    - If document doesn't exist: creates it with `count: 1`, `reportedBy: [uid]`
-   - If document exists: increments `count`, appends `uid` to `reportedBy`
-3. Before each scan, the app queries `reports/{inputKey}` to get the current count
-4. If count ≥ 1, a warning is shown alongside the AI result:
-   - 1–4 reports: amber warning "X users reported this as suspicious"
-   - 5+ reports: red warning "X users flagged this as a scam — high risk"
+   - If document exists: increments `count`, appends uid to `reportedBy` (one report per user)
+3. Before each scan, the app queries `reports/{inputKey}` to fetch the current count
+4. If count ≥ 1, a community warning is shown alongside the AI result:
+   - 1–4 reports: amber warning — "X users reported this as suspicious"
+   - 5+ reports: red warning — "X users flagged this as a scam — high risk"
 
 #### Firestore Security Rules
 
@@ -326,7 +319,7 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
 
-    // Reports — anyone can read (needed to check count before scan)
+    // Reports — anyone authenticated can read (needed to check count before scan)
     // Only signed-in users can write (prevents anonymous spam)
     match /reports/{key} {
       allow read: if true;
@@ -335,17 +328,6 @@ service cloud.firestore {
   }
 }
 ```
-
-#### Guest vs Signed-in comparison
-
-| Feature | Guest | Signed In |
-|---|---|---|
-| Scan history saved | Yes (device only) | Yes (cloud) |
-| History on another device | No | Yes |
-| History after reinstall | No | Yes |
-| Community reports | Cannot report | Can report |
-| Max history entries | 50 | Unlimited |
-| Data security | Device storage only | Firestore with UID-scoped rules |
 
 ---
 
