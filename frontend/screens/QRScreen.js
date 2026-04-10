@@ -115,11 +115,13 @@ export default function QRScreen({ embedded = false }) {
       ) : (
         <View style={styles.content}>
           {!result && !loading && !error && (
-            <View style={styles.centered}>
-              {qrImage
-                ? <Image source={qrImage} style={styles.qrIcon} resizeMode="contain" />
-                : <Text style={{ fontSize: 80, marginBottom: 8 }}>📷</Text>
-              }
+            <View style={styles.topContent}>
+              <View style={styles.qrIconWrap}>
+                {qrImage
+                  ? <Image source={qrImage} style={styles.qrIcon} resizeMode="contain" />
+                  : <Text style={{ fontSize: 80 }}>📷</Text>
+                }
+              </View>
               <Text style={styles.instructionText}>{t.tapToScan}</Text>
               <TouchableOpacity style={styles.scanButton} onPress={() => { setScanning(true); setScanned(false); }}>
                 <Text style={styles.scanButtonText}>{t.startScanning}</Text>
@@ -205,7 +207,16 @@ const makeStyles = (theme) => StyleSheet.create({
   cancelText: { color: theme.text, fontSize: 15 },
   content: { flex: 1, padding: 20 },
   centered: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16 },
-  qrIcon: { width: 160, height: 160, marginBottom: 8, opacity: 0.85 },
+  topContent: { alignItems: "center", paddingTop: 16, gap: 16 },
+  qrIconWrap: {
+    backgroundColor: theme.surface,
+    borderRadius: 20,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: theme.border,
+    overflow: "hidden",
+  },
+  qrIcon: { width: 180, height: 180 },
   instructionText: { color: theme.subtext, fontSize: 14, textAlign: "center" },
   scanButton: {
     backgroundColor: theme.accent,

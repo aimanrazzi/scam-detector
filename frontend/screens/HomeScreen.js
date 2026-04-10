@@ -313,7 +313,11 @@ export default function HomeScreen({ embedded = false }) {
             style={styles.header}
           >
             {scammerImage
-              ? <Image source={scammerImage} style={styles.headerIcon} resizeMode="contain" />
+              ? (
+                <View style={styles.headerIconWrap}>
+                  <Image source={scammerImage} style={styles.headerIcon} resizeMode="contain" />
+                </View>
+              )
               : <Text style={{ fontSize: 56, marginBottom: 10 }}>🛡️</Text>
             }
             <Text style={styles.title}>{t.title}</Text>
@@ -665,10 +669,18 @@ const makeStyles = (theme) => StyleSheet.create({
     marginHorizontal: -20,
     marginBottom: 20,
   },
-  headerIcon: {
-    width: 72,
-    height: 72,
+  headerIconWrap: {
+    backgroundColor: theme.surface,
+    borderRadius: 20,
+    padding: 10,
     marginBottom: 10,
+    borderWidth: 1,
+    borderColor: theme.border,
+    overflow: "hidden",
+  },
+  headerIcon: {
+    width: 64,
+    height: 64,
   },
   title: {
     fontSize: 30,

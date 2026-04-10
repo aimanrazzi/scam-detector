@@ -32,6 +32,7 @@ export default function MainScreen({ navigation }) {
   const [tab, setTab] = useState("check");
   const [langDropdown, setLangDropdown] = useState(false);
   const [serverReady, setServerReady] = useState(false);
+  const styles = makeStyles(theme);
 
   // Ping backend on mount to wake it up before user interacts
   useEffect(() => {
@@ -113,10 +114,10 @@ export default function MainScreen({ navigation }) {
                 style={[styles.dropdownItem, lang === l.code && styles.dropdownItemActive]}
                 onPress={() => { changeLang(l.code); setLangDropdown(false); }}
               >
-                <Text style={[styles.dropdownLabel, lang === l.code && { color: "#a78bfa" }]}>
+                <Text style={[styles.dropdownLabel, lang === l.code && { color: theme.accent }]}>
                   {l.label}
                 </Text>
-                {lang === l.code && <Text style={{ color: "#a78bfa" }}>✓</Text>}
+                {lang === l.code && <Text style={{ color: theme.accent }}>✓</Text>}
               </TouchableOpacity>
             ))}
           </View>
@@ -126,7 +127,7 @@ export default function MainScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (theme) => StyleSheet.create({
   connectingDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#fbbf24" },
   topBar: {
     flexDirection: "row",
@@ -136,26 +137,26 @@ const styles = StyleSheet.create({
     paddingTop: 56,
     paddingBottom: 14,
   },
-  appName: { fontSize: 22, fontWeight: "900", color: "#fff", letterSpacing: -0.5 },
+  appName: { fontSize: 22, fontWeight: "900", color: theme.text, letterSpacing: -0.5 },
   topRight: { flexDirection: "row", alignItems: "center", gap: 10 },
   langPill: {
-    backgroundColor: "rgba(255,255,255,0.12)",
+    backgroundColor: theme.isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)",
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 5,
   },
-  langText: { color: "#fff", fontSize: 13, fontWeight: "600" },
+  langText: { color: theme.text, fontSize: 13, fontWeight: "600" },
   toggleBtn: { justifyContent: "center", alignItems: "center" },
   toggleTrack: {
     width: 40, height: 22, borderRadius: 11,
-    backgroundColor: "rgba(255,255,255,0.2)",
+    backgroundColor: theme.isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.15)",
     justifyContent: "center",
     paddingHorizontal: 3,
   },
   toggleTrackOn: { backgroundColor: "rgba(167,139,250,0.5)" },
   toggleThumb: {
     width: 16, height: 16, borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.6)",
+    backgroundColor: theme.isDark ? "rgba(255,255,255,0.6)" : "rgba(0,0,0,0.4)",
     alignSelf: "flex-start",
   },
   toggleThumbOn: { alignSelf: "flex-end", backgroundColor: "#a78bfa" },
@@ -178,29 +179,29 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.25)",
+    borderColor: theme.border,
   },
   segBtnActive: {
-    backgroundColor: "rgba(139,92,246,0.5)",
-    borderColor: "rgba(167,139,250,0.6)",
+    backgroundColor: theme.accentBg,
+    borderColor: theme.accent,
   },
-  segText: { color: "rgba(255,255,255,0.6)", fontWeight: "600", fontSize: 13 },
-  segTextActive: { color: "#fff" },
+  segText: { color: theme.subtext, fontWeight: "600", fontSize: 13 },
+  segTextActive: { color: theme.accent, fontWeight: "700" },
   modalOverlay: {
     flex: 1, backgroundColor: "#00000066",
     justifyContent: "flex-start", alignItems: "flex-end",
     paddingTop: 100, paddingRight: 20,
   },
   dropdown: {
-    backgroundColor: "#2d1460",
+    backgroundColor: theme.surface,
     borderRadius: 14, borderWidth: 1,
-    borderColor: "rgba(167,139,250,0.3)",
+    borderColor: theme.border,
     paddingVertical: 8, minWidth: 130,
     shadowColor: "#000", shadowOpacity: 0.4,
     shadowRadius: 10, elevation: 10,
   },
   dropdownTitle: {
-    fontSize: 11, fontWeight: "700", color: "rgba(255,255,255,0.4)",
+    fontSize: 11, fontWeight: "700", color: theme.subtext,
     letterSpacing: 0.5, paddingHorizontal: 16, paddingBottom: 8,
   },
   dropdownItem: {
@@ -208,6 +209,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 16, paddingVertical: 12,
   },
-  dropdownItemActive: { backgroundColor: "rgba(167,139,250,0.1)" },
-  dropdownLabel: { fontSize: 15, fontWeight: "600", color: "#fff" },
+  dropdownItemActive: { backgroundColor: theme.accentBg },
+  dropdownLabel: { fontSize: 15, fontWeight: "600", color: theme.text },
 });
