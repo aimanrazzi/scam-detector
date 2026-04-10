@@ -20,6 +20,8 @@ venv/
 
 # Firebase credentials - never commit these
 GoogleService-Info.plist
+*firebase-adminsdk*.json
+*serviceAccount*.json
 
 # Node / React Native
 node_modules/
