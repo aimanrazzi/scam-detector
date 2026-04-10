@@ -72,7 +72,7 @@ export const translations = {
     allowCameraAccess: "Allow camera access to scan QR codes",
     grantPermission: "Grant Permission",
     tapToScan: "Tap the button below to scan a QR code",
-    startScanning: "📷 Start Scanning",
+    startScanning: "Start Scanning",
     analyzingQR: "Analyzing QR code...",
     scanAnother: "Scan Another",
     tryAgain: "Try Again",

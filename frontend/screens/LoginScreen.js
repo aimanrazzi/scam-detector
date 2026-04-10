@@ -21,7 +21,7 @@ import {
   sendPasswordResetEmail,
 } from "firebase/auth";
 import { auth } from "../firebase";
-import { useTheme } from "../context/ThemeContext";
+import { darkTheme } from "../context/ThemeContext";
 import { useLang } from "../context/LanguageContext";
 
 // Google Sign-In — only works in native APK build, not Expo Go
@@ -44,7 +44,7 @@ const LANGUAGES = [
 ];
 
 export default function LoginScreen() {
-  const { theme } = useTheme();
+  const theme = darkTheme;
   const { lang, changeLang } = useLang();
   const [mode, setMode] = useState("login"); // "login" or "signup"
   const [name, setName] = useState("");
