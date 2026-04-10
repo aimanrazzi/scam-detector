@@ -309,7 +309,7 @@ export default function HomeScreen({ embedded = false }) {
             colors={theme.isDark ? ["#1e1b4b", "#0f0f0f"] : ["#ede9fe", "#f5f5f5"]}
             style={styles.header}
           >
-            <Text style={styles.headerIcon}>🛡️</Text>
+            <Image source={require("../assets/scammer.png")} style={styles.headerIcon} resizeMode="contain" />
             <Text style={styles.title}>{t.title}</Text>
             <Text style={styles.subtitle}>{t.subtitle}</Text>
           </LinearGradient>
@@ -345,11 +345,11 @@ export default function HomeScreen({ embedded = false }) {
             {!image && (
               <View style={styles.imageButtonRow}>
                 <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
-                  <Text style={styles.imageButtonText} numberOfLines={1} adjustsFontSizeToFit>🖼️ {t.uploadScreenshot}</Text>
+                  <Text style={styles.imageButtonText} numberOfLines={1} adjustsFontSizeToFit>{t.uploadScreenshot}</Text>
                 </TouchableOpacity>
                 <View style={{ width: 1, backgroundColor: theme.border }} />
                 <TouchableOpacity style={styles.imageButton} onPress={takePhoto}>
-                  <Text style={styles.imageButtonText} numberOfLines={1} adjustsFontSizeToFit>📷 {t.takePhoto}</Text>
+                  <Text style={styles.imageButtonText} numberOfLines={1} adjustsFontSizeToFit>{t.takePhoto}</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -372,7 +372,7 @@ export default function HomeScreen({ embedded = false }) {
                 {loading ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.analyzeButtonText}>🔍 {t.checkNow}</Text>
+                  <Text style={styles.analyzeButtonText}>{t.checkNow}</Text>
                 )}
               </LinearGradient>
             </TouchableOpacity>
@@ -660,7 +660,8 @@ const makeStyles = (theme) => StyleSheet.create({
     marginBottom: 20,
   },
   headerIcon: {
-    fontSize: 56,
+    width: 72,
+    height: 72,
     marginBottom: 10,
   },
   title: {

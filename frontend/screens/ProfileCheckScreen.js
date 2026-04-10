@@ -137,14 +137,14 @@ export default function ProfileCheckScreen({ embedded = false }) {
           </View>
         ) : (
           <View style={styles.uploadBox}>
-            <Text style={styles.uploadIcon}>👤</Text>
+            <Image source={require("../assets/profile_icon.png")} style={styles.uploadIcon} resizeMode="contain" />
             <Text style={styles.uploadText}>{t.profileSubtitle}</Text>
             <View style={styles.imageButtonRow}>
               <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
-                <Text style={styles.imageButtonText} numberOfLines={1} adjustsFontSizeToFit>🖼️ {t.uploadPhoto}</Text>
+                <Text style={styles.imageButtonText} numberOfLines={1} adjustsFontSizeToFit>{t.uploadPhoto}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.imageButton} onPress={takePhoto}>
-                <Text style={styles.imageButtonText} numberOfLines={1} adjustsFontSizeToFit>📷 {t.takePhoto}</Text>
+                <Text style={styles.imageButtonText} numberOfLines={1} adjustsFontSizeToFit>{t.takePhoto}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -292,7 +292,7 @@ const makeStyles = (theme) => StyleSheet.create({
     alignItems: "center",
     marginBottom: 16,
   },
-  uploadIcon: { fontSize: 56, marginBottom: 12 },
+  uploadIcon: { width: 80, height: 80, marginBottom: 12 },
   uploadText: { color: theme.subtext, fontSize: 14, marginBottom: 16, textAlign: "center" },
   imageButtonRow: { flexDirection: "row", gap: 10 },
   imageButton: {

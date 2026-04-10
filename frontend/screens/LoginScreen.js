@@ -10,6 +10,7 @@ import {
   Platform,
   ScrollView,
   StatusBar,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -17,6 +18,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updateProfile,
+  sendPasswordResetEmail,
 } from "firebase/auth";
 import { auth } from "../firebase";
 import { useTheme } from "../context/ThemeContext";
@@ -187,7 +189,18 @@ export default function LoginScreen() {
                   secureTextEntry
                 />
                 {mode === "login" && (
-                  <Text style={S.forgotText}>forgot password</Text>
+                  <TouchableOpacity onPress={async () => {
+                    if (!email) { setError("Enter your email first."); return; }
+                    try {
+                      await sendPasswordResetEmail(auth, email.trim());
+                      setError("");
+                      Alert.alert("Email sent", "Check your inbox for a password reset link.");
+                    } catch (e) {
+                      setError("Could not send reset email. Check your email address.");
+                    }
+                  }}>
+                    <Text style={S.forgotText}>forgot password</Text>
+                  </TouchableOpacity>
                 )}
               </View>
 

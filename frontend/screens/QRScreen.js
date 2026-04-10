@@ -3,6 +3,7 @@ import {
   StyleSheet,
   Text,
   View,
+  Image,
   TouchableOpacity,
   ActivityIndicator,
 } from "react-native";
@@ -112,7 +113,7 @@ export default function QRScreen({ embedded = false }) {
         <View style={styles.content}>
           {!result && !loading && !error && (
             <View style={styles.centered}>
-              <Text style={styles.qrIcon}>⬛</Text>
+              <Image source={require("../assets/qrcode.png")} style={styles.qrIcon} resizeMode="contain" />
               <Text style={styles.instructionText}>{t.tapToScan}</Text>
               <TouchableOpacity style={styles.scanButton} onPress={() => { setScanning(true); setScanned(false); }}>
                 <Text style={styles.scanButtonText}>{t.startScanning}</Text>
@@ -198,7 +199,7 @@ const makeStyles = (theme) => StyleSheet.create({
   cancelText: { color: theme.text, fontSize: 15 },
   content: { flex: 1, padding: 20 },
   centered: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16 },
-  qrIcon: { fontSize: 64, marginBottom: 8 },
+  qrIcon: { width: 160, height: 160, marginBottom: 8, opacity: 0.85 },
   instructionText: { color: theme.subtext, fontSize: 14, textAlign: "center" },
   scanButton: {
     backgroundColor: theme.accent,

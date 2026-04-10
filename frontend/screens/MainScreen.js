@@ -13,7 +13,7 @@ import ProfileCheckScreen from "./ProfileCheckScreen";
 import { BACKEND_URL } from "../config";
 
 const SCAN_TABS = [
-  { key: "check",   label: "check"   },
+  { key: "check",   label: "Check"   },
   { key: "qr",      label: "QR scan" },
   { key: "profile", label: "Profile" },
 ];
