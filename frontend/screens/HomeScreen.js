@@ -25,7 +25,7 @@ import { useAuth } from "../context/AuthContext";
 import { db } from "../firebase";
 import { collection, addDoc, doc, getDoc, setDoc } from "firebase/firestore";
 
-import { BACKEND_URL } from "../config";
+import { securePost } from "../utils/api";
 
 let scammerImage = null;
 try { scammerImage = require("../assets/scammer.png"); } catch {}
@@ -179,21 +179,11 @@ export default function HomeScreen({ embedded = false }) {
     const timeout = setTimeout(() => controller.abort(), 60000);
 
     try {
-      let body;
-      const headers = { "Content-Type": "application/json" };
+      const bodyData = image
+        ? { image: image.base64, mime_type: image.mimeType || "image/jpeg", lang }
+        : { text: inputText.trim(), lang };
 
-      if (image) {
-        body = JSON.stringify({ image: image.base64, mime_type: image.mimeType || "image/jpeg", lang });
-      } else {
-        body = JSON.stringify({ text: inputText.trim(), lang });
-      }
-
-      const response = await fetch(`${BACKEND_URL}/analyze`, {
-        method: "POST",
-        headers,
-        body,
-        signal: controller.signal,
-      });
+      const response = await securePost("/analyze", bodyData, controller.signal);
 
       const data = await response.json();
 

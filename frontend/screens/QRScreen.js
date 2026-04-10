@@ -15,7 +15,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { useLang } from "../context/LanguageContext";
 import { useTheme } from "../context/ThemeContext";
 import { translations } from "../utils/translations";
-import { BACKEND_URL } from "../config";
+import { securePost } from "../utils/api";
 
 export default function QRScreen({ embedded = false }) {
   const { lang } = useLang();
@@ -40,11 +40,7 @@ export default function QRScreen({ embedded = false }) {
     setError(null);
 
     try {
-      const response = await fetch(`${BACKEND_URL}/analyze`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: data }),
-      });
+      const response = await securePost("/analyze", { text: data });
       const json = await response.json();
       if (json.error) {
         setError(json.error);

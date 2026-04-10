@@ -1,5 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from groq import Groq
 import requests
 import urllib3
@@ -14,6 +16,51 @@ load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
+
+# ── Rate Limiting ─────────────────────────────────────────
+# 30 requests/minute per IP, 500/day per IP
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["500 per day", "30 per minute"],
+    storage_uri="memory://",
+)
+
+# ── Firebase Token Verification (optional) ────────────────
+# Set FIREBASE_CREDENTIALS=/path/to/serviceAccount.json in .env to enable.
+# Without it, auth is disabled but rate limiting still works.
+_firebase_initialized = False
+try:
+    import firebase_admin
+    from firebase_admin import credentials as fb_credentials, auth as fb_auth
+    _creds_path = os.getenv("FIREBASE_CREDENTIALS")
+    if _creds_path and os.path.exists(_creds_path):
+        fb_cred = fb_credentials.Certificate(_creds_path)
+        firebase_admin.initialize_app(fb_cred)
+        _firebase_initialized = True
+        print("[Security] Firebase token verification: ACTIVE")
+    else:
+        print("[Security] Firebase token verification: DISABLED (no FIREBASE_CREDENTIALS set)")
+except Exception as _e:
+    print(f"[Security] Firebase Admin init failed: {_e}")
+
+def require_auth():
+    """
+    Validates Firebase ID token from Authorization header.
+    Returns (uid, None) on success, (None, error_response) on failure.
+    If Firebase is not configured, returns (None, None) — open access.
+    """
+    if not _firebase_initialized:
+        return None, None
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return None, (jsonify({"error": "Authentication required."}), 401)
+    token = auth_header.split("Bearer ", 1)[1].strip()
+    try:
+        decoded = fb_auth.verify_id_token(token)
+        return decoded["uid"], None
+    except Exception:
+        return None, (jsonify({"error": "Invalid or expired session. Please sign in again."}), 401)
 
 # ── Clients ──────────────────────────────────────────────
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
@@ -800,7 +847,11 @@ Respond with "reason" and all "findings" in """ + LANG_NAMES.get(lang, "English"
 
 # ── Profile Check Route ──────────────────────────────────
 @app.route("/check-profile", methods=["POST"])
+@limiter.limit("10 per minute")
 def check_profile():
+    _, err = require_auth()
+    if err:
+        return err
     data = request.get_json()
     if not data or "image" not in data:
         return jsonify({"error": "Please provide an image."}), 400
@@ -869,7 +920,11 @@ def check_profile():
 
 # ── Main Route: Analyze input ────────────────────────────
 @app.route("/analyze", methods=["POST"])
+@limiter.limit("20 per minute")
 def analyze():
+    _, err = require_auth()
+    if err:
+        return err
     data = request.get_json()
 
     if not data:

@@ -17,7 +17,7 @@ import { useLang } from "../context/LanguageContext";
 import { useTheme } from "../context/ThemeContext";
 import { translations } from "../utils/translations";
 
-import { BACKEND_URL } from "../config";
+import { securePost } from "../utils/api";
 
 let profileIcon = null;
 try { profileIcon = require("../assets/profile_icon.png"); } catch {}
@@ -92,11 +92,7 @@ export default function ProfileCheckScreen({ embedded = false }) {
     setError(null);
 
     try {
-      const response = await fetch(`${BACKEND_URL}/check-profile`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: image.base64, lang }),
-      });
+      const response = await securePost("/check-profile", { image: image.base64, lang });
       const data = await response.json();
       if (data.error) {
         setError(data.error);
