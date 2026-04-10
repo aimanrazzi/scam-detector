@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import { useLang } from "../context/LanguageContext";
 import { useTheme } from "../context/ThemeContext";
 import { translations } from "../utils/translations";
@@ -84,6 +85,7 @@ export default function TipsScreen() {
   ];
 
   return (
+    <LinearGradient colors={["#12072a", "#3b1080", "#6d28d9"]} style={{ flex: 1 }}>
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.title}>{t.scamAwareness}</Text>
@@ -121,11 +123,12 @@ export default function TipsScreen() {
         </View>
       </ScrollView>
     </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const makeStyles = (theme) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.background },
+  container: { flex: 1, backgroundColor: "transparent" },
   scroll: { padding: 20, paddingBottom: 110 },
   title: { fontSize: 24, fontWeight: "bold", color: theme.text, marginTop: 10, marginBottom: 6 },
   subtitle: { fontSize: 14, color: theme.subtext, marginBottom: 20, lineHeight: 20 },

@@ -4,6 +4,7 @@ import {
   TouchableOpacity, Alert, Share, Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
 import { useLang } from "../context/LanguageContext";
@@ -133,6 +134,7 @@ export default function HistoryScreen() {
   });
 
   return (
+    <LinearGradient colors={["#12072a", "#3b1080", "#6d28d9"]} style={{ flex: 1 }}>
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
 
@@ -216,11 +218,12 @@ export default function HistoryScreen() {
       </ScrollView>
 
     </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const makeStyles = (theme) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.background },
+  container: { flex: 1, backgroundColor: "transparent" },
   scroll: { padding: 20, paddingBottom: 110 },
   headerRow: {
     flexDirection: "row", justifyContent: "space-between",

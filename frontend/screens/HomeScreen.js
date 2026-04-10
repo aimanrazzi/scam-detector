@@ -645,7 +645,7 @@ export default function HomeScreen({ embedded = false }) {
 const makeStyles = (theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.background,
+    backgroundColor: "transparent",
   },
   scroll: {
     padding: 20,
