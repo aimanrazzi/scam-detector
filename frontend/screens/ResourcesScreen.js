@@ -31,7 +31,7 @@ export default function ResourcesScreen() {
     {
       name: "NSRC – National Scam Response Centre",
       description: t.nsrcDesc,
-      url: "https://www.nsrc.malaysia.gov.my",
+      url: "https://nfcc.jpm.gov.my/index.php/en/about-nsrc",
       tag: "KPDNHEP",
       color: theme.warning,
     },

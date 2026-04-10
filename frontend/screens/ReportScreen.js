@@ -62,7 +62,7 @@ export default function ReportScreen() {
       title: t.reportWATitle,
       description: t.reportWADesc,
       action: t.reportWAAction,
-      url: "https://faq.whatsapp.com",
+      url: "https://faq.whatsapp.com/2286952358121083",
       color: theme.subtext,
       urgent: false,
     },

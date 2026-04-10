@@ -7,14 +7,13 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
+import * as Sharing from "expo-sharing";
 import { useLang } from "../context/LanguageContext";
 import { useTheme } from "../context/ThemeContext";
 import { translations } from "../utils/translations";
 import { useAuth } from "../context/AuthContext";
 import { db } from "../firebase";
 import { collection, query, orderBy, getDocs, deleteDoc, doc } from "firebase/firestore";
-let RNShare = null;
-try { RNShare = require("react-native-share").default; } catch {}
 
 const STATUS_FILTERS = ["ALL", "SAFE", "SUSPICIOUS", "SCAM"];
 
@@ -67,24 +66,25 @@ export default function HistoryScreen() {
 
   const shareItem = async (item) => {
     const text =
-      `🛡️ ScamShield Result\n\n` +
+      `Combat. Scam Check Result\n\n` +
       `Status: ${item.status} — ${item.score}/100\n` +
       `${item.reason}\n\n` +
       `Checked on: ${formatDate(item.date)}`;
 
-    try {
-      if (item.localImagePath) {
-        await RNShare.open({
-          url: item.localImagePath,
-          message: text,
-          type: "image/jpeg",
-          title: "ScamShield Result",
-        });
-        return;
+    if (item.localImagePath) {
+      try {
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(item.localImagePath, {
+            mimeType: "image/jpeg",
+            dialogTitle: "Share Scam Check Result",
+            UTI: "public.jpeg",
+          });
+          return;
+        }
+      } catch (e) {
+        if (e?.message?.includes("cancel") || e?.message?.includes("dismiss")) return;
       }
-    } catch (e) {
-      // RNShare not available (Expo Go) or user cancelled — fall back to text
-      if (e?.message === "User did not share") return;
     }
     await Share.share({ message: text });
   };
