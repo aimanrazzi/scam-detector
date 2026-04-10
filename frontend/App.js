@@ -32,6 +32,7 @@ const TABS = [
 function AppTabs() {
   return (
     <Tab.Navigator
+      sceneContainerStyle={{ backgroundColor: "transparent" }}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarShowLabel: true,
@@ -69,7 +70,7 @@ function AppTabs() {
 
 function AppStack() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "transparent" } }}>
       <Stack.Screen name="Tabs" component={AppTabs} />
       <Stack.Screen
         name="Account"

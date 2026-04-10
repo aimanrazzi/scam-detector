@@ -278,7 +278,7 @@ export default function ProfileCheckScreen({ embedded = false }) {
 }
 
 const makeStyles = (theme) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.background },
+  container: { flex: 1, backgroundColor: "transparent" },
   scroll: { padding: 20, paddingBottom: 110 },
   title: { fontSize: 28, fontWeight: "900", color: theme.text, marginTop: 10, marginBottom: 6, letterSpacing: -0.5 },
   subtitle: { fontSize: 14, color: theme.subtext, marginBottom: 20, lineHeight: 22 },

@@ -165,7 +165,7 @@ export default function QRScreen({ embedded = false }) {
 }
 
 const makeStyles = (theme) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.background },
+  container: { flex: 1, backgroundColor: "transparent" },
   header: { padding: 20, paddingBottom: 10 },
   title: { fontSize: 24, fontWeight: "bold", color: theme.text, marginTop: 10 },
   subtitle: { fontSize: 14, color: theme.subtext, marginTop: 4 },
