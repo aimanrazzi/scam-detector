@@ -10,7 +10,8 @@ import {
   Platform,
   ScrollView,
   StatusBar,
-  Alert,
+  Modal,
+  Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -52,6 +53,36 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [forgotVisible, setForgotVisible] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotSuccess, setForgotSuccess] = useState(false);
+  const [forgotError, setForgotError] = useState("");
+
+  const openForgot = () => {
+    setForgotEmail(email); // pre-fill if user already typed email
+    setForgotSuccess(false);
+    setForgotError("");
+    setForgotVisible(true);
+  };
+
+  const handleForgotPassword = async () => {
+    if (!forgotEmail.trim()) { setForgotError("Please enter your email address."); return; }
+    setForgotLoading(true);
+    setForgotError("");
+    try {
+      await sendPasswordResetEmail(auth, forgotEmail.trim());
+      setForgotSuccess(true);
+    } catch (e) {
+      const msg = {
+        "auth/invalid-email": "Invalid email address.",
+        "auth/user-not-found": "No account found with this email.",
+      }[e.code] || "Could not send reset email. Try again.";
+      setForgotError(msg);
+    } finally {
+      setForgotLoading(false);
+    }
+  };
 
   const handleGoogle = async () => {
     if (!GoogleSignin) {
@@ -189,17 +220,8 @@ export default function LoginScreen() {
                   secureTextEntry
                 />
                 {mode === "login" && (
-                  <TouchableOpacity onPress={async () => {
-                    if (!email) { setError("Enter your email first."); return; }
-                    try {
-                      await sendPasswordResetEmail(auth, email.trim());
-                      setError("");
-                      Alert.alert("Email sent", "Check your inbox for a password reset link.");
-                    } catch (e) {
-                      setError("Could not send reset email. Check your email address.");
-                    }
-                  }}>
-                    <Text style={S.forgotText}>forgot password</Text>
+                  <TouchableOpacity onPress={openForgot}>
+                    <Text style={S.forgotText}>Forgot password</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -231,6 +253,59 @@ export default function LoginScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
+
+      {/* Forgot Password Modal */}
+      <Modal
+        visible={forgotVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setForgotVisible(false)}
+      >
+        <Pressable style={S.modalOverlay} onPress={() => setForgotVisible(false)}>
+          <Pressable style={S.modalCard} onPress={() => {}}>
+            <Text style={S.modalTitle}>Reset Password</Text>
+            <Text style={S.modalSubtitle}>
+              Enter your email address and we'll send you a link to reset your password.
+            </Text>
+
+            {forgotSuccess ? (
+              <View style={S.successBox}>
+                <Text style={S.successIcon}>✅</Text>
+                <Text style={S.successText}>Reset link sent! Check your inbox and spam folder.</Text>
+              </View>
+            ) : (
+              <>
+                <TextInput
+                  style={S.modalInput}
+                  placeholder="you@email.com"
+                  placeholderTextColor="rgba(255,255,255,0.35)"
+                  value={forgotEmail}
+                  onChangeText={setForgotEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  autoFocus
+                />
+                {forgotError ? <Text style={S.modalError}>{forgotError}</Text> : null}
+                <TouchableOpacity
+                  style={[S.modalBtn, forgotLoading && { opacity: 0.6 }]}
+                  onPress={handleForgotPassword}
+                  disabled={forgotLoading}
+                  activeOpacity={0.85}
+                >
+                  {forgotLoading
+                    ? <ActivityIndicator color="#fff" />
+                    : <Text style={S.modalBtnText}>Send Reset Link</Text>
+                  }
+                </TouchableOpacity>
+              </>
+            )}
+
+            <TouchableOpacity style={S.modalCancel} onPress={() => setForgotVisible(false)}>
+              <Text style={S.modalCancelText}>{forgotSuccess ? "Close" : "Cancel"}</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -317,4 +392,75 @@ const S = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.06)",
   },
   googleBtnText: { color: "#fff", fontWeight: "600", fontSize: 15 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    backgroundColor: "#1e0a4a",
+    borderRadius: 20,
+    padding: 24,
+    width: "100%",
+    borderWidth: 1,
+    borderColor: "rgba(167,139,250,0.3)",
+  },
+  modalTitle: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "800",
+    marginBottom: 8,
+    letterSpacing: -0.3,
+  },
+  modalSubtitle: {
+    color: "rgba(255,255,255,0.55)",
+    fontSize: 13,
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  modalInput: {
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    color: "#fff",
+    fontSize: 15,
+    borderWidth: 1,
+    borderColor: "rgba(167,139,250,0.2)",
+    marginBottom: 12,
+  },
+  modalError: {
+    color: "#f87171",
+    fontSize: 13,
+    marginBottom: 12,
+  },
+  modalBtn: {
+    backgroundColor: "#7c3aed",
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  modalBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  modalCancel: {
+    alignItems: "center",
+    paddingVertical: 10,
+  },
+  modalCancelText: { color: "rgba(255,255,255,0.4)", fontSize: 14 },
+  successBox: {
+    alignItems: "center",
+    paddingVertical: 16,
+    gap: 12,
+    marginBottom: 8,
+  },
+  successIcon: { fontSize: 40 },
+  successText: {
+    color: "#34d399",
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 22,
+    fontWeight: "600",
+  },
 });
