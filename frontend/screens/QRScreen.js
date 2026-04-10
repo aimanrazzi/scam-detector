@@ -1,4 +1,7 @@
 import React, { useState } from "react";
+
+let qrImage = null;
+try { qrImage = require("../assets/qrcode.png"); } catch {}
 import {
   StyleSheet,
   Text,
@@ -113,7 +116,10 @@ export default function QRScreen({ embedded = false }) {
         <View style={styles.content}>
           {!result && !loading && !error && (
             <View style={styles.centered}>
-              <Image source={require("../assets/qrcode.png")} style={styles.qrIcon} resizeMode="contain" />
+              {qrImage
+                ? <Image source={qrImage} style={styles.qrIcon} resizeMode="contain" />
+                : <Text style={{ fontSize: 80, marginBottom: 8 }}>📷</Text>
+              }
               <Text style={styles.instructionText}>{t.tapToScan}</Text>
               <TouchableOpacity style={styles.scanButton} onPress={() => { setScanning(true); setScanned(false); }}>
                 <Text style={styles.scanButtonText}>{t.startScanning}</Text>

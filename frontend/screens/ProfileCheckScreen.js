@@ -19,6 +19,9 @@ import { translations } from "../utils/translations";
 
 import { BACKEND_URL } from "../config";
 
+let profileIcon = null;
+try { profileIcon = require("../assets/profile_icon.png"); } catch {}
+
 export default function ProfileCheckScreen({ embedded = false }) {
   const { lang } = useLang();
   const t = translations[lang] || translations.en;
@@ -137,7 +140,10 @@ export default function ProfileCheckScreen({ embedded = false }) {
           </View>
         ) : (
           <View style={styles.uploadBox}>
-            <Image source={require("../assets/profile_icon.png")} style={styles.uploadIcon} resizeMode="contain" />
+            {profileIcon
+              ? <Image source={profileIcon} style={styles.uploadIcon} resizeMode="contain" />
+              : <Text style={{ fontSize: 56, marginBottom: 12 }}>👤</Text>
+            }
             <Text style={styles.uploadText}>{t.profileSubtitle}</Text>
             <View style={styles.imageButtonRow}>
               <TouchableOpacity style={styles.imageButton} onPress={pickImage}>

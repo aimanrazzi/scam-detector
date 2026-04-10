@@ -4,9 +4,9 @@ import { LinearGradient } from "expo-linear-gradient";
 
 const { width, height } = Dimensions.get("window");
 
-// Save your knight photo as frontend/assets/knight.jpg
+// Save your knight photo as frontend/assets/wall.jpg
 let knightImage = null;
-try { knightImage = require("../assets/knight.jpg"); } catch {}
+try { knightImage = require("../assets/wall.jpg"); } catch {}
 
 export default function SplashScreen({ onDone }) {
   useEffect(() => {

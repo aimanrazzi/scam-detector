@@ -27,6 +27,9 @@ import { collection, addDoc, doc, getDoc, setDoc } from "firebase/firestore";
 
 import { BACKEND_URL } from "../config";
 
+let scammerImage = null;
+try { scammerImage = require("../assets/scammer.png"); } catch {}
+
 export default function HomeScreen({ embedded = false }) {
   const { lang } = useLang();
   const t = translations[lang] || translations.en;
@@ -309,7 +312,10 @@ export default function HomeScreen({ embedded = false }) {
             colors={theme.isDark ? ["#1e1b4b", "#0f0f0f"] : ["#ede9fe", "#f5f5f5"]}
             style={styles.header}
           >
-            <Image source={require("../assets/scammer.png")} style={styles.headerIcon} resizeMode="contain" />
+            {scammerImage
+              ? <Image source={scammerImage} style={styles.headerIcon} resizeMode="contain" />
+              : <Text style={{ fontSize: 56, marginBottom: 10 }}>🛡️</Text>
+            }
             <Text style={styles.title}>{t.title}</Text>
             <Text style={styles.subtitle}>{t.subtitle}</Text>
           </LinearGradient>
