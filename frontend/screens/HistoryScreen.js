@@ -8,6 +8,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
 import * as Sharing from "expo-sharing";
+let RNShare = null;
+try { RNShare = require("react-native-share").default; } catch {}
 import { useLang } from "../context/LanguageContext";
 import { useTheme } from "../context/ThemeContext";
 import { translations } from "../utils/translations";
@@ -72,6 +74,19 @@ export default function HistoryScreen() {
       `Checked on: ${formatDate(item.date)}`;
 
     if (item.localImagePath) {
+      if (RNShare) {
+        try {
+          await RNShare.open({
+            url: item.localImagePath,
+            message: text,
+            type: "image/jpeg",
+            failOnCancel: false,
+          });
+          return;
+        } catch (e) {
+          if (!e || e.message === "User did not share" || e?.message?.includes("cancel") || e?.message?.includes("dismiss")) return;
+        }
+      }
       try {
         const canShare = await Sharing.isAvailableAsync();
         if (canShare) {
