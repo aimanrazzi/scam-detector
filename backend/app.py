@@ -33,14 +33,23 @@ _firebase_initialized = False
 try:
     import firebase_admin
     from firebase_admin import credentials as fb_credentials, auth as fb_auth
-    _creds_path = os.getenv("FIREBASE_CREDENTIALS")
-    if _creds_path and os.path.exists(_creds_path):
+
+    _creds_json = os.getenv("FIREBASE_CREDENTIALS_JSON")   # full JSON string (Render)
+    _creds_path = os.getenv("FIREBASE_CREDENTIALS")        # file path (local dev)
+
+    if _creds_json:
+        import json as _json
+        fb_cred = fb_credentials.Certificate(_json.loads(_creds_json))
+        firebase_admin.initialize_app(fb_cred)
+        _firebase_initialized = True
+        print("[Security] Firebase token verification: ACTIVE (from env JSON)")
+    elif _creds_path and os.path.exists(_creds_path):
         fb_cred = fb_credentials.Certificate(_creds_path)
         firebase_admin.initialize_app(fb_cred)
         _firebase_initialized = True
-        print("[Security] Firebase token verification: ACTIVE")
+        print("[Security] Firebase token verification: ACTIVE (from file)")
     else:
-        print("[Security] Firebase token verification: DISABLED (no FIREBASE_CREDENTIALS set)")
+        print("[Security] Firebase token verification: DISABLED (no credentials set)")
 except Exception as _e:
     print(f"[Security] Firebase Admin init failed: {_e}")
 
