@@ -23,7 +23,6 @@ import {
 } from "firebase/auth";
 import { auth } from "../firebase";
 import { darkTheme } from "../context/ThemeContext";
-import { useLang } from "../context/LanguageContext";
 
 // Google Sign-In — only works in native APK build, not Expo Go
 let GoogleSignin = null;
@@ -37,16 +36,8 @@ try {
   // Not available in Expo Go
 }
 
-const LANGUAGES = [
-  { code: "en", label: "EN" },
-  { code: "ms", label: "MY" },
-  { code: "zh", label: "ZH" },
-  { code: "ta", label: "TA" },
-];
-
 export default function LoginScreen() {
   const theme = darkTheme;
-  const { lang, changeLang } = useLang();
   const [mode, setMode] = useState("login"); // "login" or "signup"
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -150,12 +141,6 @@ export default function LoginScreen() {
             {/* Top bar */}
             <View style={S.topBar}>
               <Text style={S.logo}>Combat.</Text>
-              <TouchableOpacity style={S.langPill} onPress={() => {
-                const idx = LANGUAGES.findIndex(l => l.code === lang);
-                changeLang(LANGUAGES[(idx + 1) % LANGUAGES.length].code);
-              }}>
-                <Text style={S.langText}>{LANGUAGES.find(l => l.code === lang)?.label || "EN"} ▾</Text>
-              </TouchableOpacity>
             </View>
 
             <View style={{ flex: 1, justifyContent: "center", paddingTop: 20, paddingBottom: 40 }}>
@@ -319,13 +304,6 @@ const S = StyleSheet.create({
     marginBottom: 8,
   },
   logo: { fontSize: 26, fontWeight: "900", color: "#fff", letterSpacing: -0.5 },
-  langPill: {
-    backgroundColor: "rgba(255,255,255,0.12)",
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-  },
-  langText: { color: "#fff", fontSize: 13, fontWeight: "600" },
   toggleWrap: {
     flexDirection: "row",
     backgroundColor: "rgba(255,255,255,0.08)",
