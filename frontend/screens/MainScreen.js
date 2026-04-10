@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  Modal, Pressable, Image,
+  Modal, Pressable, Image, StatusBar,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "../context/ThemeContext";
 import { useAuth } from "../context/AuthContext";
 import { useLang } from "../context/LanguageContext";
@@ -12,16 +13,16 @@ import ProfileCheckScreen from "./ProfileCheckScreen";
 import { BACKEND_URL } from "../config";
 
 const SCAN_TABS = [
-  { key: "check",   label: "🔍 Check"   },
-  { key: "qr",      label: "⬛ QR Scan"  },
-  { key: "profile", label: "👤 Profile"  },
+  { key: "check",   label: "check"   },
+  { key: "qr",      label: "QR scan" },
+  { key: "profile", label: "Profile" },
 ];
 
 const LANGUAGES = [
-  { code: "en", label: "🇬🇧 English"  },
-  { code: "ms", label: "🇲🇾 Melayu"   },
-  { code: "zh", label: "🇨🇳 中文"     },
-  { code: "ta", label: "🇮🇳 தமிழ்"    },
+  { code: "en", label: "EN" },
+  { code: "ms", label: "MY" },
+  { code: "zh", label: "ZH" },
+  { code: "ta", label: "TA" },
 ];
 
 export default function MainScreen({ navigation }) {
@@ -47,37 +48,29 @@ export default function MainScreen({ navigation }) {
   const currentLang = LANGUAGES.find((l) => l.code === lang) || LANGUAGES[0];
 
   return (
-    <View style={styles.container}>
+    <LinearGradient colors={["#12072a", "#3b1080", "#6d28d9"]} style={{ flex: 1 }}>
+      <StatusBar barStyle="light-content" />
+
       {/* Top bar */}
       <View style={styles.topBar}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <Text style={styles.appName}>🛡️ ScamShield</Text>
-          {!serverReady && (
-            <View style={styles.connectingDot} />
-          )}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Text style={styles.appName}>Combat.</Text>
+          {!serverReady && <View style={styles.connectingDot} />}
         </View>
-
         <View style={styles.topRight}>
-          {/* Language dropdown button */}
-          <TouchableOpacity
-            style={[styles.langBtn, { borderColor: theme.border, backgroundColor: theme.surface }]}
-            onPress={() => setLangDropdown(true)}
-          >
-            <Text style={styles.langBtnText}>{currentLang.label.split(" ")[0]}</Text>
-            <Text style={[styles.langBtnLabel, { color: theme.subtext }]}>▾</Text>
+          <TouchableOpacity style={styles.langPill} onPress={() => setLangDropdown(true)}>
+            <Text style={styles.langText}>{currentLang.label} ▾</Text>
           </TouchableOpacity>
-
-          {/* Theme toggle */}
           <TouchableOpacity
-            style={[styles.iconBtn, { borderColor: theme.border, backgroundColor: theme.surface }]}
+            style={styles.toggleBtn}
             onPress={toggleTheme}
           >
-            <Text style={{ fontSize: 16 }}>{theme.isDark ? "☀️" : "🌙"}</Text>
+            <View style={[styles.toggleTrack, theme.isDark && styles.toggleTrackOn]}>
+              <View style={[styles.toggleThumb, theme.isDark && styles.toggleThumbOn]} />
+            </View>
           </TouchableOpacity>
-
-          {/* Avatar → Account */}
           <TouchableOpacity
-            style={[styles.avatar, { backgroundColor: theme.accent }]}
+            style={styles.avatar}
             onPress={() => navigation.navigate("Account")}
           >
             {user?.photoURL
@@ -88,21 +81,19 @@ export default function MainScreen({ navigation }) {
         </View>
       </View>
 
-      {/* Segment control */}
+      {/* Segment pills */}
       <View style={styles.segmentWrap}>
-        <View style={styles.segment}>
-          {SCAN_TABS.map((t) => (
-            <TouchableOpacity
-              key={t.key}
-              style={[styles.segBtn, tab === t.key && { backgroundColor: theme.accent }]}
-              onPress={() => setTab(t.key)}
-            >
-              <Text style={[styles.segText, { color: tab === t.key ? "#fff" : theme.subtext }]}>
-                {t.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {SCAN_TABS.map((t) => (
+          <TouchableOpacity
+            key={t.key}
+            style={[styles.segBtn, tab === t.key && styles.segBtnActive]}
+            onPress={() => setTab(t.key)}
+          >
+            <Text style={[styles.segText, tab === t.key && styles.segTextActive]}>
+              {t.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       {/* Content */}
@@ -113,109 +104,111 @@ export default function MainScreen({ navigation }) {
       </View>
 
       {/* Language dropdown modal */}
-      <Modal
-        transparent
-        visible={langDropdown}
-        animationType="fade"
-        onRequestClose={() => setLangDropdown(false)}
-      >
+      <Modal transparent visible={langDropdown} animationType="fade" onRequestClose={() => setLangDropdown(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setLangDropdown(false)}>
-          <View style={[styles.dropdown, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <Text style={[styles.dropdownTitle, { color: theme.subtext }]}>Select Language</Text>
+          <View style={styles.dropdown}>
+            <Text style={styles.dropdownTitle}>Language</Text>
             {LANGUAGES.map((l) => (
               <TouchableOpacity
                 key={l.code}
-                style={[
-                  styles.dropdownItem,
-                  { borderColor: theme.border },
-                  lang === l.code && { backgroundColor: theme.accentBg },
-                ]}
+                style={[styles.dropdownItem, lang === l.code && styles.dropdownItemActive]}
                 onPress={() => { changeLang(l.code); setLangDropdown(false); }}
               >
-                <Text style={styles.dropdownFlag}>{l.label.split(" ")[0]}</Text>
-                <Text style={[styles.dropdownLabel, { color: lang === l.code ? theme.accent : theme.text }]}>
-                  {l.label.split(" ").slice(1).join(" ")}
+                <Text style={[styles.dropdownLabel, lang === l.code && { color: "#a78bfa" }]}>
+                  {l.label}
                 </Text>
-                {lang === l.code && <Text style={{ color: theme.accent, fontSize: 16 }}>✓</Text>}
+                {lang === l.code && <Text style={{ color: "#a78bfa" }}>✓</Text>}
               </TouchableOpacity>
             ))}
           </View>
         </Pressable>
       </Modal>
-    </View>
+    </LinearGradient>
   );
 }
 
-const makeStyles = (theme) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.background },
-  connectingDot: {
-    width: 7, height: 7, borderRadius: 4,
-    backgroundColor: "#f59e0b",
-  },
+const styles = StyleSheet.create({
+  connectingDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#fbbf24" },
   topBar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     paddingTop: 56,
-    paddingBottom: 12,
-    backgroundColor: theme.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.border,
+    paddingBottom: 14,
   },
-  appName: { fontSize: 17, fontWeight: "800", color: theme.text },
-  topRight: { flexDirection: "row", alignItems: "center", gap: 8 },
-  langBtn: {
-    flexDirection: "row", alignItems: "center", gap: 2,
-    paddingHorizontal: 10, paddingVertical: 6,
-    borderRadius: 8, borderWidth: 1,
+  appName: { fontSize: 22, fontWeight: "900", color: "#fff", letterSpacing: -0.5 },
+  topRight: { flexDirection: "row", alignItems: "center", gap: 10 },
+  langPill: {
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
   },
-  langBtnText: { fontSize: 14 },
-  langBtnLabel: { fontSize: 10, marginLeft: 2 },
-  iconBtn: {
-    width: 34, height: 34, borderRadius: 8,
-    alignItems: "center", justifyContent: "center",
-    borderWidth: 1,
+  langText: { color: "#fff", fontSize: 13, fontWeight: "600" },
+  toggleBtn: { justifyContent: "center", alignItems: "center" },
+  toggleTrack: {
+    width: 40, height: 22, borderRadius: 11,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    paddingHorizontal: 3,
   },
+  toggleTrackOn: { backgroundColor: "rgba(167,139,250,0.5)" },
+  toggleThumb: {
+    width: 16, height: 16, borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.6)",
+    alignSelf: "flex-start",
+  },
+  toggleThumbOn: { alignSelf: "flex-end", backgroundColor: "#a78bfa" },
   avatar: {
-    width: 34, height: 34, borderRadius: 17,
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: "#7c3aed",
     alignItems: "center", justifyContent: "center",
     overflow: "hidden",
   },
-  avatarImg: { width: 34, height: 34, borderRadius: 17 },
-  avatarText: { color: "#fff", fontWeight: "800", fontSize: 13 },
+  avatarImg: { width: 32, height: 32, borderRadius: 16 },
+  avatarText: { color: "#fff", fontWeight: "800", fontSize: 12 },
   segmentWrap: {
-    paddingHorizontal: 16, paddingVertical: 10,
-    backgroundColor: theme.surface,
-    borderBottomWidth: 1, borderBottomColor: theme.border,
+    flexDirection: "row",
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    gap: 8,
   },
-  segment: {
-    flexDirection: "row", backgroundColor: theme.background,
-    borderRadius: 10, padding: 3, gap: 3,
+  segBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
   },
-  segBtn: { flex: 1, paddingVertical: 8, alignItems: "center", borderRadius: 8 },
-  segText: { fontWeight: "700", fontSize: 12 },
+  segBtnActive: {
+    backgroundColor: "rgba(139,92,246,0.5)",
+    borderColor: "rgba(167,139,250,0.6)",
+  },
+  segText: { color: "rgba(255,255,255,0.6)", fontWeight: "600", fontSize: 13 },
+  segTextActive: { color: "#fff" },
   modalOverlay: {
     flex: 1, backgroundColor: "#00000066",
     justifyContent: "flex-start", alignItems: "flex-end",
-    paddingTop: 110, paddingRight: 16,
+    paddingTop: 100, paddingRight: 20,
   },
   dropdown: {
+    backgroundColor: "#2d1460",
     borderRadius: 14, borderWidth: 1,
-    paddingVertical: 8, minWidth: 180,
-    shadowColor: "#000", shadowOpacity: 0.2,
+    borderColor: "rgba(167,139,250,0.3)",
+    paddingVertical: 8, minWidth: 130,
+    shadowColor: "#000", shadowOpacity: 0.4,
     shadowRadius: 10, elevation: 10,
   },
   dropdownTitle: {
-    fontSize: 11, fontWeight: "700",
-    letterSpacing: 0.5, paddingHorizontal: 16,
-    paddingBottom: 8,
+    fontSize: 11, fontWeight: "700", color: "rgba(255,255,255,0.4)",
+    letterSpacing: 0.5, paddingHorizontal: 16, paddingBottom: 8,
   },
   dropdownItem: {
     flexDirection: "row", alignItems: "center",
-    gap: 10, paddingHorizontal: 16, paddingVertical: 12,
-    borderTopWidth: 1,
+    justifyContent: "space-between",
+    paddingHorizontal: 16, paddingVertical: 12,
   },
-  dropdownFlag: { fontSize: 18 },
-  dropdownLabel: { flex: 1, fontSize: 15, fontWeight: "600" },
+  dropdownItemActive: { backgroundColor: "rgba(167,139,250,0.1)" },
+  dropdownLabel: { fontSize: 15, fontWeight: "600", color: "#fff" },
 });
