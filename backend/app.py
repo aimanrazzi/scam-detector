@@ -1043,15 +1043,13 @@ def analyze():
         phone_reports = semak_result.get("reports", 0) if semak_result and semak_result["found"] else 0
         email_reports = email_semak.get("reports", 0) if email_semak and email_semak["found"] else 0
 
-        # Any Semak Mule report → force at least SUSPICIOUS
+        # Semak Mule is PDRM's official database — any report = confirmed scam
         if phone_reports >= 1 or email_reports >= 1:
-            final_score = max(final_score, 40)
-        # 2+ reports → high SUSPICIOUS
+            final_score = max(final_score, 75)   # SCAM
         if phone_reports >= 2 or email_reports >= 2:
-            final_score = max(final_score, 60)
-        # 3+ reports → SCAM
+            final_score = max(final_score, 85)
         if phone_reports >= 3 or email_reports >= 3:
-            final_score = max(final_score, 80)
+            final_score = max(final_score, 92)
 
         # VirusTotal multiple engines flagged → force ≥ 75
         if (url_result and url_result.get("malicious", 0) >= 3) or \
