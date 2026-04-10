@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { View, ActivityIndicator } from "react-native";
-import { NavigationContainer } from "@react-navigation/native";
+import { LinearGradient } from "expo-linear-gradient";
+import { NavigationContainer, DefaultTheme } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -104,10 +105,17 @@ function AppRoot() {
 
   if (!user) return <LoginScreen />;
 
+  const navTheme = {
+    ...DefaultTheme,
+    colors: { ...DefaultTheme.colors, background: "transparent" },
+  };
+
   return (
-    <NavigationContainer>
-      <AppStack />
-    </NavigationContainer>
+    <LinearGradient colors={["#12072a", "#3b1080", "#6d28d9"]} style={{ flex: 1 }}>
+      <NavigationContainer theme={navTheme}>
+        <AppStack />
+      </NavigationContainer>
+    </LinearGradient>
   );
 }
 
