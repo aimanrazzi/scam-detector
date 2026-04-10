@@ -73,34 +73,21 @@ export default function HistoryScreen() {
       `${item.reason}\n\n` +
       `Checked on: ${formatDate(item.date)}`;
 
-    if (item.localImagePath) {
-      if (RNShare) {
-        try {
-          await RNShare.open({
-            url: item.localImagePath,
-            message: text,
-            type: "image/jpeg",
-            failOnCancel: false,
-          });
-          return;
-        } catch (e) {
-          if (!e || e.message === "User did not share" || e?.message?.includes("cancel") || e?.message?.includes("dismiss")) return;
-        }
-      }
+    if (item.localImagePath && RNShare) {
+      // react-native-share supports image + text together (APK only)
       try {
-        const canShare = await Sharing.isAvailableAsync();
-        if (canShare) {
-          await Sharing.shareAsync(item.localImagePath, {
-            mimeType: "image/jpeg",
-            dialogTitle: "Share Scam Check Result",
-            UTI: "public.jpeg",
-          });
-          return;
-        }
+        await RNShare.open({
+          url: item.localImagePath,
+          message: text,
+          type: "image/jpeg",
+          failOnCancel: false,
+        });
+        return;
       } catch (e) {
-        if (e?.message?.includes("cancel") || e?.message?.includes("dismiss")) return;
+        if (!e || e.message === "User did not share" || e?.message?.includes("cancel") || e?.message?.includes("dismiss")) return;
       }
     }
+    // Fallback: text only (works in Expo Go and when no image)
     await Share.share({ message: text });
   };
 
