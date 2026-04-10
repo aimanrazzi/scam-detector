@@ -78,63 +78,6 @@ NUMVERIFY_API_KEY = os.getenv("NUMVERIFY_API_KEY")
 SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")
 
-# ── BNM Financial Consumer Alert List ────────────────────
-# Source: OpenSanctions mirror of BNM's official alert list (updated daily)
-# Contains ~1,170 unauthorized companies, websites, and individuals in Malaysia
-BNM_ALERT_ENTITIES = []   # list of lowercase entity name strings
-
-def _load_bnm_alert_list():
-    try:
-        # Try BNM's own API first (requires Accept header)
-        resp = requests.get(
-            "https://api.bnm.gov.my/public/consumer-alert",
-            headers={"Accept": "application/vnd.BNM.API.v1+json"},
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            data = resp.json().get("data", [])
-            for item in data:
-                name = item.get("name", "").strip()
-                if name:
-                    BNM_ALERT_ENTITIES.append(name.lower())
-            print(f"[BNM] Loaded {len(BNM_ALERT_ENTITIES)} entities from BNM API.")
-            return
-    except Exception:
-        pass
-
-    # Fallback: OpenSanctions CSV mirror
-    try:
-        resp = requests.get(
-            "https://data.opensanctions.org/datasets/latest/my_bnm_alert_list/targets.simple.csv",
-            timeout=15,
-        )
-        if resp.status_code == 200:
-            import csv, io
-            reader = csv.DictReader(io.StringIO(resp.text))
-            for row in reader:
-                name = row.get("name", "").strip()
-                if name:
-                    BNM_ALERT_ENTITIES.append(name.lower())
-            print(f"[BNM] Loaded {len(BNM_ALERT_ENTITIES)} entities from OpenSanctions fallback.")
-            return
-    except Exception:
-        pass
-
-    print("[BNM] Could not load alert list — BNM check will be skipped.")
-
-_load_bnm_alert_list()
-
-
-def check_bnm_alert(text):
-    """Return matched entity name if input contains a BNM-listed entity, else None."""
-    if not BNM_ALERT_ENTITIES:
-        return None
-    text_lower = text.lower()
-    for entity in BNM_ALERT_ENTITIES:
-        if len(entity) >= 5 and entity in text_lower:
-            return entity
-    return None
-
 
 LANG_NAMES = {
     "en": "English",
@@ -1039,10 +982,10 @@ def analyze():
             external_score += ip_boost
             findings.append("IP address was flagged by VirusTotal.")
 
-        # Semak Mule phone — max +30
+        # Semak Mule phone — 20pts per report, max +60
         semak_boost = 0
         if semak_result and semak_result["found"]:
-            semak_boost = min(30, semak_result["reports"] * 10)
+            semak_boost = min(60, semak_result["reports"] * 20)
             external_score += semak_boost
             findings.append(f"🚨 This phone number has {semak_result['reports']} scam report(s) on Semak Mule (PDRM).")
         elif semak_result and not semak_result["found"]:
@@ -1050,10 +993,10 @@ def analyze():
         elif semak_result is None and detected_phone:
             findings.append("⚠️ Could not reach Semak Mule to verify this phone number.")
 
-        # Semak Mule email — max +30
+        # Semak Mule email — 20pts per report, max +60
         email_semak_boost = 0
         if email_semak and email_semak["found"]:
-            email_semak_boost = min(30, email_semak["reports"] * 10)
+            email_semak_boost = min(60, email_semak["reports"] * 20)
             external_score += email_semak_boost
             findings.append(f"🚨 This email has {email_semak['reports']} scam report(s) on Semak Mule (PDRM).")
         elif email_semak and not email_semak["found"]:
@@ -1072,12 +1015,6 @@ def analyze():
                 findings += [f"  • {s}" for s in social_result["snippets"][:2]]
             else:
                 findings.append(f"✅ @{handle} ({platform}) — no scam reports found online.")
-
-        # BNM Financial Consumer Alert — max +30, hard override ≥ 80
-        bnm_match = check_bnm_alert(text)
-        if bnm_match:
-            external_score += 30
-            findings.append(f"🚨 '{bnm_match.title()}' is listed on BNM's Financial Consumer Alert as an unauthorised entity.")
 
         # Legitimacy signals — reduce external score
         if detected_url:
@@ -1103,9 +1040,16 @@ def analyze():
         final_score = round((ai_result["score"] * 0.5) + (external_score * 0.5))
 
         # ── Hard overrides — high-confidence signals force minimum scores ──
-        # Semak Mule 3+ reports → force ≥ 80
         phone_reports = semak_result.get("reports", 0) if semak_result and semak_result["found"] else 0
         email_reports = email_semak.get("reports", 0) if email_semak and email_semak["found"] else 0
+
+        # Any Semak Mule report → force at least SUSPICIOUS
+        if phone_reports >= 1 or email_reports >= 1:
+            final_score = max(final_score, 40)
+        # 2+ reports → high SUSPICIOUS
+        if phone_reports >= 2 or email_reports >= 2:
+            final_score = max(final_score, 60)
+        # 3+ reports → SCAM
         if phone_reports >= 3 or email_reports >= 3:
             final_score = max(final_score, 80)
 
@@ -1113,10 +1057,6 @@ def analyze():
         if (url_result and url_result.get("malicious", 0) >= 3) or \
            (ip_result and ip_result.get("malicious", 0) >= 3):
             final_score = max(final_score, 75)
-
-        # BNM-listed entity → force ≥ 80
-        if bnm_match:
-            final_score = max(final_score, 80)
 
         # Final clamp and status
         final_score = min(100, max(0, final_score))
