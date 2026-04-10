@@ -7,7 +7,6 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import os
 import re
 import json
-import csv
 from urllib.parse import urlparse
 from dotenv import load_dotenv
 
@@ -23,64 +22,6 @@ NUMVERIFY_API_KEY = os.getenv("NUMVERIFY_API_KEY")
 SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")
 
-# ── Malicious URL Dataset (Kaggle) ────────────────────────
-# Place malicious_phish.csv in the backend/ folder.
-# Dataset: https://www.kaggle.com/datasets/sid321axn/malicious-urls-dataset
-# Columns: url, type  (types: benign, defacement, phishing, malware)
-MALICIOUS_URL_DB = {}   # domain/url → label
-MALICIOUS_TYPES = {"phishing", "malware", "defacement"}
-
-def _load_malicious_dataset():
-    csv_path = os.path.join(os.path.dirname(__file__), "malicious_phish.csv")
-    if not os.path.exists(csv_path):
-        return
-    loaded = 0
-    try:
-        with open(csv_path, newline="", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                url = row.get("url", "").strip().lower()
-                label = row.get("type", "").strip().lower()
-                if url and label in MALICIOUS_TYPES:
-                    # Store by full URL and by domain for flexible matching
-                    MALICIOUS_URL_DB[url] = label
-                    try:
-                        domain = urlparse("http://" + url if not url.startswith("http") else url).netloc
-                        if domain and domain not in MALICIOUS_URL_DB:
-                            MALICIOUS_URL_DB[domain] = label
-                    except Exception:
-                        pass
-                loaded += 1
-        print(f"[Dataset] Loaded {len(MALICIOUS_URL_DB)} malicious URL/domain entries.")
-    except Exception as e:
-        print(f"[Dataset] Failed to load malicious_phish.csv: {e}")
-
-_load_malicious_dataset()
-
-
-def check_url_in_dataset(url):
-    """Check a URL against the loaded malicious URL dataset. Returns label or None."""
-    if not MALICIOUS_URL_DB:
-        return None
-    url_lower = url.lower().strip()
-    # Strip scheme for raw lookup
-    raw = re.sub(r'^https?://', '', url_lower).rstrip('/')
-    if raw in MALICIOUS_URL_DB:
-        return MALICIOUS_URL_DB[raw]
-    if url_lower in MALICIOUS_URL_DB:
-        return MALICIOUS_URL_DB[url_lower]
-    # Domain-only lookup
-    try:
-        domain = urlparse(url).netloc.lower()
-        if domain in MALICIOUS_URL_DB:
-            return MALICIOUS_URL_DB[domain]
-        # Strip www.
-        bare = domain.removeprefix("www.")
-        if bare in MALICIOUS_URL_DB:
-            return MALICIOUS_URL_DB[bare]
-    except Exception:
-        pass
-    return None
 
 LANG_NAMES = {
     "en": "English",
@@ -964,15 +905,6 @@ def analyze():
 
         external_score = 0
         findings = list(ai_result.get("findings", []))
-        dataset_label = None
-
-        # Dataset check — max +25
-        if detected_url:
-            dataset_label = check_url_in_dataset(detected_url)
-            if dataset_label:
-                dataset_boost = {"phishing": 25, "malware": 25, "defacement": 20}.get(dataset_label, 15)
-                external_score += dataset_boost
-                findings.append(f"URL matched a known {dataset_label} entry in our threat database.")
 
         # VirusTotal URL — max +25
         if url_result and url_result["flagged"]:
@@ -1055,10 +987,6 @@ def analyze():
            (ip_result and ip_result.get("malicious", 0) >= 3):
             final_score = max(final_score, 75)
 
-        # Dataset phishing/malware match → force ≥ 75
-        if dataset_label in ("phishing", "malware"):
-            final_score = max(final_score, 75)
-
         # Final clamp and status
         final_score = min(100, max(0, final_score))
 
@@ -1076,7 +1004,6 @@ def analyze():
             "findings": findings,
             "url_scanned": detected_url,
             "url_flagged": url_result["flagged"] if url_result else None,
-            "dataset_label": dataset_label,
             "ip_scanned": detected_ip,
             "ip_flagged": ip_result["flagged"] if ip_result else None,
             "phone_scanned": detected_phone,
