@@ -12,7 +12,7 @@ export async function securePost(path, body, signal) {
   try {
     const currentUser = auth.currentUser;
     if (currentUser) {
-      const token = await currentUser.getIdToken();
+      const token = await currentUser.getIdToken(true);
       headers["Authorization"] = `Bearer ${token}`;
     }
   } catch {
